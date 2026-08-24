@@ -2,6 +2,7 @@ package com.hcs.minions.gui;
 
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.FuelService;
+import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.MaterialNames;
 import net.kyori.adventure.text.Component;
@@ -39,10 +40,18 @@ public final class FuelGui {
         }
     }
 
-    /** 燃料选项槽（中间行）。 */
-    public static final int[] OPTION_SLOTS = {10, 11, 12, 13, 14, 15, 16};
-    public static final int STATUS_SLOT = 22;
-    public static final int CLOSE_SLOT = 26;
+    /** 燃料选项槽（中间行，gui.yml layout.fuel-gui.option.slots 可配）。 */
+    public static int[] optionSlots() {
+        return GuiLayout.slots("fuel-gui.option.slots");
+    }
+
+    public static int statusSlot() {
+        return GuiLayout.slot("fuel-gui.status.slot");
+    }
+
+    public static int closeSlot() {
+        return GuiLayout.slot("fuel-gui.close.slot");
+    }
 
     private FuelGui() {
     }
@@ -53,20 +62,22 @@ public final class FuelGui {
                 GuiText.title("fuel-gui.title"));
 
         Map<Material, Integer> owned = scanInventory(player);
+        int[] optionSlots = optionSlots();
         int slotIndex = 0;
         for (Map.Entry<Material, FuelService.FuelValue> e : FuelService.all().entrySet()) {
             int count = owned.getOrDefault(e.getKey(), 0);
-            if (count <= 0 || slotIndex >= OPTION_SLOTS.length) {
+            if (count <= 0 || slotIndex >= optionSlots.length) {
                 continue;
             }
-            inv.setItem(OPTION_SLOTS[slotIndex++], optionItem(e.getKey(), e.getValue(), count));
+            inv.setItem(optionSlots[slotIndex++], optionItem(e.getKey(), e.getValue(), count));
         }
-        if (slotIndex == 0) {
-            inv.setItem(OPTION_SLOTS[3], named(Material.GRAY_STAINED_GLASS_PANE,
+        if (slotIndex == 0 && optionSlots.length > 0) {
+            inv.setItem(optionSlots[optionSlots.length / 2], named(GuiLayout.material("fuel-gui.empty.material"),
                     GuiText.title("fuel-gui.empty.title")));
         }
-        inv.setItem(STATUS_SLOT, statusItem(minion));
-        inv.setItem(CLOSE_SLOT, named(Material.BARRIER, GuiText.title("collection-gui.close.title")));
+        inv.setItem(statusSlot(), statusItem(minion));
+        inv.setItem(closeSlot(), named(GuiLayout.material("fuel-gui.close.material"),
+                GuiText.title("collection-gui.close.title")));
         player.openInventory(inv);
     }
 

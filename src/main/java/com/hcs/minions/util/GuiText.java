@@ -46,6 +46,7 @@ public final class GuiText {
             plugin.saveResource("gui.yml", false);
         }
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        GuiLayout.load(yaml); // 同一文件的 layout 段：槽位/材质布局（与文案同步热重载）
         Map<String, Object> loaded = new HashMap<>();
         for (String key : yaml.getKeys(true)) {
             if (yaml.isString(key)) {

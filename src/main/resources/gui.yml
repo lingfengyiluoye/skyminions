@@ -269,3 +269,102 @@ fuel-gui:
       - "<gray>{none}当前无燃料</gray>"
       - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
       - "<dark_gray>潜行点击卸下限时燃料</dark_gray>"
+
+# ============================================================
+#  GUI 布局配置（槽位与图标材质，与文案同样支持热重载）
+# ------------------------------------------------------------
+#  · 槽位: 整数或 "a-b" 区间字符串, 如 [9-44, 49]
+#  · 材质: 大写物品名, 如 GOLD_INGOT / ARMOR_STAND
+#  · 删除任意键即回退内置默认; 越界/无效值会告警并回退
+#  · 仓库/图鉴为 54 格界面, 燃料选择为 27 格界面
+#  · 布局变化在下次打开对应 GUI 时生效
+# ============================================================
+layout:
+  # ---- 仆从仓库 GUI（54 格） ----
+  storage:
+    slots: [9-44]                      # 存储区 36 格（按 Tier 逐级解锁）
+    decor:
+      slots: [1, 2, 6, 8, 45, 46]      # 装饰玻璃槽
+      material: BLACK_STAINED_GLASS_PANE
+    locked:
+      material: GRAY_STAINED_GLASS_PANE  # 未解锁存储格/未解锁模块槽
+    fuel:
+      slot: 0                          # 燃料状态卡（图标随状态变化，不可改）
+    info:
+      slot: 3
+      material: BOOK
+    head:
+      slot: 4                          # 头颅（图标为仆从皮肤头颅，不可改）
+    upgrade:
+      slot: 5
+      material-ok: GOLD_INGOT          # 材料充足
+      material-lack: FURNACE           # 材料不足
+      material-max: GOLD_INGOT         # 已满级
+    skin:
+      slot: 7
+      material: LEATHER_HELMET
+    module1:
+      slot: 47                         # 模块槽 1（Tier 4 解锁）
+    module2:
+      slot: 48                         # 模块槽 2（Tier 8 解锁）
+    module-empty:
+      material: HOPPER                 # 空模块槽图标
+    collect:
+      slot: 49                         # 收集全部（居中）
+      material: GOLD_BLOCK
+    autosell:
+      slot: 50
+      material-on: EMERALD
+      material-off: GOLD_INGOT
+    layout:
+      slot: 51                         # 理想布局
+      material: MAP
+    pickup:
+      slot: 52
+      material: ARMOR_STAND
+    close:
+      slot: 53
+      material: BARRIER
+
+  # ---- 图鉴 GUI（/minions，54 格） ----
+  collection:
+    all:
+      slot: 0                          # 「全部」过滤按钮
+      material: BOOK
+    filter:
+      slots: [1, 2, 3, 4, 5, 6]        # 分类过滤槽（按采矿/农业/伐木/战斗/钓鱼/特殊顺序）
+    icon:
+      mining: DIAMOND_PICKAXE
+      farming: GOLDEN_HOE
+      foraging: IRON_AXE
+      combat: DIAMOND_SWORD
+      fishing: FISHING_ROD
+      special: NETHER_STAR
+    card:
+      slots: [9-44]                    # 卡片区（长度决定每页展示数）
+    locked:
+      material: BARRIER                # 未解锁卡片 ???
+    prev:
+      slot: 48
+      material: ARROW
+    progress:
+      slot: 49
+      material: BOOK
+    next:
+      slot: 50
+      material: ARROW
+    close:
+      slot: 8
+      material: BARRIER
+
+  # ---- 燃料选择 GUI（27 格） ----
+  fuel-gui:
+    option:
+      slots: [10, 11, 12, 13, 14, 15, 16]
+    empty:
+      material: GRAY_STAINED_GLASS_PANE  # 背包无燃料时的占位格
+    status:
+      slot: 22                         # 当前燃料状态卡
+    close:
+      slot: 26
+      material: BARRIER

@@ -4,6 +4,7 @@ import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.FuelService;
 import com.hcs.minions.service.MinionManager;
+import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.Messages;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -43,17 +44,17 @@ public final class FuelGuiListener implements Listener {
         if (slot >= event.getInventory().getSize()) {
             return;
         }
-        if (slot == FuelGui.CLOSE_SLOT) {
+        if (slot == FuelGui.closeSlot()) {
             manager.openGui(player, minion); // 返回仆从仓库界面
             return;
         }
-        if (slot == FuelGui.STATUS_SLOT) {
+        if (slot == FuelGui.statusSlot()) {
             unequip(player, minion, event.isShiftClick());
             return;
         }
         if (isOptionSlot(slot)) {
             ItemStack option = event.getInventory().getItem(slot);
-            if (option == null || option.getType() == Material.GRAY_STAINED_GLASS_PANE) {
+            if (option == null || option.getType() == GuiLayout.material("fuel-gui.empty.material")) {
                 return;
             }
             install(player, minion, option.getType(), event.isShiftClick() ? 1 : option.getAmount());
@@ -61,7 +62,7 @@ public final class FuelGuiListener implements Listener {
     }
 
     private static boolean isOptionSlot(int slot) {
-        for (int s : FuelGui.OPTION_SLOTS) {
+        for (int s : FuelGui.optionSlots()) {
             if (s == slot) {
                 return true;
             }

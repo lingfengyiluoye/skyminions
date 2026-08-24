@@ -2,6 +2,7 @@ package com.hcs.minions.model;
 
 import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.upgrade.MinionUpgradeType;
+import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemCodec;
 import com.hcs.minions.util.ItemRef;
@@ -48,30 +49,61 @@ public final class Minion {
 
     public static final int GUI_SIZE = 54;
 
-    // Hypixel 风格布局：
-    //   顶行(0-8)   : 燃料 | 装饰 | 装饰 | 信息卡 | 头颅(居中) | 升级 | 装饰 | 皮肤 | 装饰
-    //   存储区(9-44): 36 格（按 Tier 解锁，锁定格灰玻璃）
-    //   底行(45-53) : 装饰 | 装饰 | 模块1 | 模块2 | 收集全部(居中) | 自动售卖 | 理想布局 | 拾取 | 关闭
-    public static final int[] STORAGE_SLOTS = {
-            9, 10, 11, 12, 13, 14, 15, 16, 17,
-            18, 19, 20, 21, 22, 23, 24, 25, 26,
-            27, 28, 29, 30, 31, 32, 33, 34, 35,
-            36, 37, 38, 39, 40, 41, 42, 43, 44
-    };
-    public static final int FUEL_SLOT = 0;
-    public static final int INFO_SLOT = 3;
-    public static final int HEAD_SLOT = 4;
-    public static final int UPGRADE_SLOT = 5;
-    public static final int SKIN_SLOT = 7;
-    public static final int UPGRADE1_SLOT = 47;
-    public static final int UPGRADE2_SLOT = 48;
-    public static final int COLLECT_SLOT = 49;
-    public static final int AUTOSELL_SLOT = 50;
-    public static final int LAYOUT_SLOT = 51;
-    public static final int PICKUP_SLOT = 52;
-    public static final int CLOSE_SLOT = 53;
+    // Hypixel 风格布局（槽位/材质均由 gui.yml layout 段驱动，见 {@link GuiLayout}）：
+    //   顶行       : 燃料 | 装饰 | 装饰 | 信息卡 | 头颅(居中) | 升级 | 装饰 | 皮肤 | 装饰
+    //   存储区     : 36 格（按 Tier 解锁，锁定格用 locked 材质）
+    //   底行       : 装饰 | 装饰 | 模块1 | 模块2 | 收集全部(居中) | 自动售卖 | 理想布局 | 拾取 | 关闭
+    public static int[] storageSlots() {
+        return GuiLayout.slots("storage.slots");
+    }
 
-    private static final int[] DECOR_SLOTS = {1, 2, 6, 8, 45, 46};
+    public static int fuelSlot() {
+        return GuiLayout.slot("storage.fuel.slot");
+    }
+
+    public static int infoSlot() {
+        return GuiLayout.slot("storage.info.slot");
+    }
+
+    public static int headSlot() {
+        return GuiLayout.slot("storage.head.slot");
+    }
+
+    public static int upgradeSlot() {
+        return GuiLayout.slot("storage.upgrade.slot");
+    }
+
+    public static int skinSlot() {
+        return GuiLayout.slot("storage.skin.slot");
+    }
+
+    public static int module1Slot() {
+        return GuiLayout.slot("storage.module1.slot");
+    }
+
+    public static int module2Slot() {
+        return GuiLayout.slot("storage.module2.slot");
+    }
+
+    public static int collectSlot() {
+        return GuiLayout.slot("storage.collect.slot");
+    }
+
+    public static int autosellSlot() {
+        return GuiLayout.slot("storage.autosell.slot");
+    }
+
+    public static int layoutSlot() {
+        return GuiLayout.slot("storage.layout.slot");
+    }
+
+    public static int pickupSlot() {
+        return GuiLayout.slot("storage.pickup.slot");
+    }
+
+    public static int closeSlot() {
+        return GuiLayout.slot("storage.close.slot");
+    }
 
     private final UUID id;
     private final UUID owner;
@@ -182,7 +214,7 @@ public final class Minion {
 
     public int unlockedSlots() {
         // 36 格存储，Tier 1 解锁 9 格，每级 +3 格（对齐 Hypixel 存储随等级成长）
-        return Math.min(STORAGE_SLOTS.length, 9 + (level - 1) * 3);
+        return Math.min(storageSlots().length, 9 + (level - 1) * 3);
     }
 
     /** 模块槽解锁 Tier 门槛（对齐 Hypixel 原版：低 Tier 无模块槽）。 */
@@ -201,7 +233,7 @@ public final class Minion {
     }
 
     public static boolean isStorageSlot(int rawSlot) {
-        for (int s : STORAGE_SLOTS) {
+        for (int s : storageSlots()) {
             if (s == rawSlot) {
                 return true;
             }
@@ -212,9 +244,10 @@ public final class Minion {
     // ---- 仓库读写 ----
     public List<ItemStack> storageItems() {
         List<ItemStack> items = new ArrayList<>();
+        Material lockedMat = GuiLayout.material("storage.locked.material");
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
-            if (item != null && item.getType() != Material.AIR && item.getType() != Material.GRAY_STAINED_GLASS_PANE) {
+            ItemStack item = storage.getItem(storageSlots()[i]);
+            if (item != null && item.getType() != Material.AIR && item.getType() != lockedMat) {
                 items.add(item.clone());
             }
         }
@@ -223,7 +256,7 @@ public final class Minion {
 
     public void setStorageItems(List<ItemStack> items) {
         for (int i = 0; i < unlockedSlots(); i++) {
-            storage.setItem(STORAGE_SLOTS[i], null);
+            storage.setItem(storageSlots()[i], null);
         }
         addToStorage(items.toArray(new ItemStack[0]));
     }
@@ -241,7 +274,7 @@ public final class Minion {
             ItemStack toAdd = item.clone();
             int remaining = toAdd.getAmount();
             for (int i = 0; i < unlockedSlots() && remaining > 0; i++) {
-                ItemStack cur = storage.getItem(STORAGE_SLOTS[i]);
+                ItemStack cur = storage.getItem(storageSlots()[i]);
                 if (cur != null && cur.isSimilar(toAdd)) {
                     int space = cur.getMaxStackSize() - cur.getAmount();
                     if (space > 0) {
@@ -252,12 +285,12 @@ public final class Minion {
                 }
             }
             for (int i = 0; i < unlockedSlots() && remaining > 0; i++) {
-                ItemStack cur = storage.getItem(STORAGE_SLOTS[i]);
+                ItemStack cur = storage.getItem(storageSlots()[i]);
                 if (cur == null || cur.getType() == Material.AIR) {
                     int add = Math.min(toAdd.getMaxStackSize(), remaining);
                     ItemStack copy = toAdd.clone();
                     copy.setAmount(add);
-                    storage.setItem(STORAGE_SLOTS[i], copy);
+                    storage.setItem(storageSlots()[i], copy);
                     remaining -= add;
                 }
             }
@@ -277,7 +310,7 @@ public final class Minion {
 
     public boolean isStorageFull() {
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+            ItemStack item = storage.getItem(storageSlots()[i]);
             if (item == null || item.getType() == Material.AIR) {
                 return false;
             }
@@ -288,7 +321,7 @@ public final class Minion {
     public List<ItemStack> collectAll() {
         List<ItemStack> items = storageItems();
         for (int i = 0; i < unlockedSlots(); i++) {
-            storage.setItem(STORAGE_SLOTS[i], null);
+            storage.setItem(storageSlots()[i], null);
         }
         markDirty();
         return items;
@@ -297,7 +330,7 @@ public final class Minion {
     public boolean consume(ItemRef ref, long amount) {
         long remaining = amount;
         for (int i = 0; i < unlockedSlots() && remaining > 0; i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+            ItemStack item = storage.getItem(storageSlots()[i]);
             if (!ref.matches(item)) {
                 continue;
             }
@@ -305,7 +338,7 @@ public final class Minion {
             item.setAmount(item.getAmount() - take);
             remaining -= take;
             if (item.getAmount() <= 0) {
-                storage.setItem(STORAGE_SLOTS[i], null);
+                storage.setItem(storageSlots()[i], null);
             }
         }
         markDirty();
@@ -345,7 +378,7 @@ public final class Minion {
             }
             int remaining = toRemove.getAmount();
             for (int i = 0; i < unlockedSlots() && remaining > 0; i++) {
-                ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+                ItemStack item = storage.getItem(storageSlots()[i]);
                 if (item == null || !item.isSimilar(toRemove)) {
                     continue;
                 }
@@ -353,7 +386,7 @@ public final class Minion {
                 item.setAmount(item.getAmount() - take);
                 remaining -= take;
                 if (item.getAmount() <= 0) {
-                    storage.setItem(STORAGE_SLOTS[i], null);
+                    storage.setItem(storageSlots()[i], null);
                 }
             }
         }
@@ -371,35 +404,36 @@ public final class Minion {
 
     // ---- GUI 渲染 ----
     public void refresh(MinionTypeConfig cfg) {
-        // 统一深色边框玻璃（顶栏/底栏同色，存储区锁定格用浅灰区分）
-        ItemStack decor = named(Material.BLACK_STAINED_GLASS_PANE, Component.empty());
-        for (int s : DECOR_SLOTS) {
+        // 统一深色边框玻璃（顶栏/底栏同色，存储区锁定格用浅色区分）——材质均由 layout 配置
+        ItemStack decor = named(GuiLayout.material("storage.decor.material"), Component.empty());
+        for (int s : GuiLayout.slots("storage.decor.slots")) {
             storage.setItem(s, decor);
         }
-        ItemStack locked = named(Material.GRAY_STAINED_GLASS_PANE,
+        Material lockedMat = GuiLayout.material("storage.locked.material");
+        ItemStack locked = named(lockedMat,
                 GuiText.title("locked-slot.title"), GuiText.lore("locked-slot.lore"));
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack it = storage.getItem(STORAGE_SLOTS[i]);
-            if (it != null && it.getType() == Material.GRAY_STAINED_GLASS_PANE) {
-                storage.setItem(STORAGE_SLOTS[i], null);
+            ItemStack it = storage.getItem(storageSlots()[i]);
+            if (it != null && it.getType() == lockedMat) {
+                storage.setItem(storageSlots()[i], null);
             }
         }
-        for (int i = unlockedSlots(); i < STORAGE_SLOTS.length; i++) {
-            storage.setItem(STORAGE_SLOTS[i], locked);
+        for (int i = unlockedSlots(); i < storageSlots().length; i++) {
+            storage.setItem(storageSlots()[i], locked);
         }
         // 燃料槽已按钮化（手持燃料点击即结算），槽内永远只放状态卡，无需担心覆盖真燃料
-        storage.setItem(FUEL_SLOT, fuelDisplay());
-        storage.setItem(INFO_SLOT, infoItem(cfg));
-        storage.setItem(HEAD_SLOT, headItem(cfg));
-        storage.setItem(UPGRADE_SLOT, upgradeButton(cfg));
-        storage.setItem(SKIN_SLOT, skinItem());
-        storage.setItem(UPGRADE1_SLOT, upgradeSlotItem(upgrade1, 1, unlockedUpgradeSlots() >= 1));
-        storage.setItem(UPGRADE2_SLOT, upgradeSlotItem(upgrade2, 2, unlockedUpgradeSlots() >= 2));
-        storage.setItem(COLLECT_SLOT, collectItem());
-        storage.setItem(AUTOSELL_SLOT, autoSellItem());
-        storage.setItem(LAYOUT_SLOT, layoutItem(cfg));
-        storage.setItem(PICKUP_SLOT, pickupItem());
-        storage.setItem(CLOSE_SLOT, named(Material.BARRIER, GuiText.title("close.title")));
+        storage.setItem(fuelSlot(), fuelDisplay());
+        storage.setItem(infoSlot(), infoItem(cfg));
+        storage.setItem(headSlot(), headItem(cfg));
+        storage.setItem(upgradeSlot(), upgradeButton(cfg));
+        storage.setItem(skinSlot(), skinItem());
+        storage.setItem(module1Slot(), upgradeSlotItem(upgrade1, 1, unlockedUpgradeSlots() >= 1));
+        storage.setItem(module2Slot(), upgradeSlotItem(upgrade2, 2, unlockedUpgradeSlots() >= 2));
+        storage.setItem(collectSlot(), collectItem());
+        storage.setItem(autosellSlot(), autoSellItem());
+        storage.setItem(layoutSlot(), layoutItem(cfg));
+        storage.setItem(pickupSlot(), pickupItem());
+        storage.setItem(closeSlot(), named(GuiLayout.material("storage.close.material"), GuiText.title("close.title")));
     }
 
     /** 信息卡（Hypixel 信息书风格）：文案来自 gui.yml（info.*），数据以占位符注入；
@@ -421,7 +455,7 @@ public final class Minion {
         }
         v.put("total", String.valueOf(totalProduced));
         v.put("next", String.valueOf(nextWorkSeconds()));
-        return named(Material.BOOK, GuiText.title("info.title", v), GuiText.lore("info.lore", v));
+        return named(GuiLayout.material("storage.info.material"), GuiText.title("info.title", v), GuiText.lore("info.lore", v));
     }
 
     /** 纯函数：指定等级下的单次工作秒数（含燃料加成），供当前/下一级对比。 */
@@ -433,7 +467,7 @@ public final class Minion {
     long storageCount() {
         long n = 0;
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+            ItemStack item = storage.getItem(storageSlots()[i]);
             if (item != null && item.getType() != Material.AIR) {
                 n += item.getAmount();
             }
@@ -445,7 +479,7 @@ public final class Minion {
     public long countInStorage(ItemRef ref) {
         long n = 0;
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+            ItemStack item = storage.getItem(storageSlots()[i]);
             if (ref.matches(item)) {
                 n += item.getAmount();
             }
@@ -456,9 +490,9 @@ public final class Minion {
     /** 仓库内寻找与扣除由调用方谓词匹配的槽位（合成升级消耗仆从本体用），命中返回槽位否则 -1。 */
     public int findSlot(java.util.function.Predicate<ItemStack> matcher) {
         for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(STORAGE_SLOTS[i]);
+            ItemStack item = storage.getItem(storageSlots()[i]);
             if (item != null && item.getType() != Material.AIR && matcher.test(item)) {
-                return STORAGE_SLOTS[i];
+                return storageSlots()[i];
             }
         }
         return -1;
@@ -529,7 +563,7 @@ public final class Minion {
     private ItemStack upgradeButton(MinionTypeConfig cfg) {
         if (level >= cfg.maxLevel()) {
             Map<String, String> max = Map.of("tier", String.valueOf(cfg.maxLevel()));
-            return named(Material.GOLD_INGOT,
+            return named(GuiLayout.material("storage.upgrade.material-max"),
                     GuiText.title("upgrade-max.title", max), GuiText.lore("upgrade-max.lore", max));
         }
         Map<ItemRef, Long> recipe = cfg.recipeFor(level);
@@ -554,7 +588,7 @@ public final class Minion {
             row++;
         }
         String key = enough ? "upgrade" : "upgrade-lack";
-        return named(enough ? Material.GOLD_INGOT : Material.FURNACE,
+        return named(GuiLayout.material("storage.upgrade.material-" + (enough ? "ok" : "lack")),
                 GuiText.title(key + ".title", v), GuiText.lore(key + ".lore", v));
     }
 
@@ -569,7 +603,7 @@ public final class Minion {
         if (!unlocked) {
             int tier = n == 1 ? UPGRADE_SLOT1_UNLOCK_TIER : UPGRADE_SLOT2_UNLOCK_TIER;
             Map<String, String> v = Map.of("n", String.valueOf(n), "tier", String.valueOf(tier));
-            return named(Material.GRAY_STAINED_GLASS_PANE,
+            return named(GuiLayout.material("storage.locked.material"),
                     GuiText.title("module-locked.title", v), GuiText.lore("module-locked.lore", v));
         }
         if (upgrade != null) {
@@ -578,18 +612,18 @@ public final class Minion {
                     GuiText.title("module-equipped.title", v), GuiText.lore("module-equipped.lore", v));
         }
         Map<String, String> v = Map.of("n", String.valueOf(n));
-        return named(Material.HOPPER,
+        return named(GuiLayout.material("storage.module-empty.material"),
                 GuiText.title("module-empty.title", v), GuiText.lore("module-empty.lore", v));
     }
 
     private ItemStack collectItem() {
         Map<String, String> v = Map.of("count", String.valueOf(storageCount()));
-        return named(Material.GOLD_BLOCK, GuiText.title("collect.title", v), GuiText.lore("collect.lore", v));
+        return named(GuiLayout.material("storage.collect.material"), GuiText.title("collect.title", v), GuiText.lore("collect.lore", v));
     }
 
     private ItemStack autoSellItem() {
         String key = autoSell ? "autosell-on" : "autosell-off";
-        Material icon = autoSell ? Material.EMERALD : Material.GOLD_INGOT;
+        Material icon = GuiLayout.material("storage.autosell.material-" + (autoSell ? "on" : "off"));
         return named(icon, GuiText.title(key + ".title"), GuiText.lore(key + ".lore"));
     }
 
@@ -599,7 +633,7 @@ public final class Minion {
         Map<String, String> v = new LinkedHashMap<>();
         v.put("current", skin.displayName());
         v.put("next", next.displayName());
-        return named(Material.LEATHER_HELMET, GuiText.title("skin.title", v), GuiText.lore("skin.lore", v));
+        return named(GuiLayout.material("storage.skin.material"), GuiText.title("skin.title", v), GuiText.lore("skin.lore", v));
     }
 
     private ItemStack layoutItem(MinionTypeConfig cfg) {
@@ -610,11 +644,11 @@ public final class Minion {
             // 圆石仆从为可执行开关：可选行显示当前状态（其余类型不显示这两行）
             v.put(idealLayout ? "on" : "off", "");
         }
-        return named(Material.MAP, GuiText.title("layout.title", v), GuiText.lore("layout.lore", v));
+        return named(GuiLayout.material("storage.layout.material"), GuiText.title("layout.title", v), GuiText.lore("layout.lore", v));
     }
 
     private ItemStack pickupItem() {
-        return named(Material.ARMOR_STAND, GuiText.title("pickup.title"), GuiText.lore("pickup.lore"));
+        return named(GuiLayout.material("storage.pickup.material"), GuiText.title("pickup.title"), GuiText.lore("pickup.lore"));
     }
 
     /** 统一物品构造：所有文案经 GuiText 渲染；此处兜底关闭原版物品名/Lore 的默认斜体

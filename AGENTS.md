@@ -30,10 +30,10 @@ com.hcs.minions
 ├── repository/              # 接口 + 缓存 + SQLite/MySQL
 ├── service/                 # MinionManager（全局调度器）+ 各业务服务
 ├── work/                    # 策略模式（7 种仆从工作策略）
-├── gui/                     # 仓库 GUI 点击/关闭处理
+├── gui/                     # MinionGUIListener（仓库）/ CollectionGui（图鉴）/ FuelGui（燃料选择）
 ├── listener/                # 放置/交互/上线事件
 ├── event/                   # 自定义 Bukkit Event
-└── util/                    # AsyncExecutor / ItemCodec / Logs / Messages / GuiText
+└── util/                    # AsyncExecutor / ItemCodec / Logs / Messages / GuiText / GuiLayout
 ```
 
 ## 关键开发约定
@@ -51,8 +51,12 @@ Paper/Adventure 框架下渲染物品名或 Lore 时，**必须**显式调用 `d
 - 模块槽位于存储区下方，收集按钮居中
 - 卡片内用 ▬ 分隔线分节
 
-### 4. GUI 文案模板化
-GUI 文案由 `gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>` 等）和 `{占位符}` 注入数据。修改后 `/minion reload` 热重载生效。新增 GUI 卡片时遵循此模板规范。
+### 4. GUI 文案与布局模板化
+GUI 文案由 `gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>` 等）和 `{占位符}` 注入数据。
+**布局（槽位/图标材质）同样配置驱动**：`gui.yml` 的 `layout:` 段由 `GuiLayout` 解析，
+槽位支持区间语法（`[9-44]`），越界/无效值告警并回退内置默认。新增 GUI 时：
+槽位/材质一律经 `GuiLayout.slot()/slots()/material()` 读取并在 `GuiLayout.Defaults` 登记默认值，
+**禁止硬编码槽位常量**。修改后 `/minion reload` 热重载生效。
 
 ### 5. 配置热重载与兼容性
 配置文件修改后执行 `/minion reload` 热重载；已放置仆从下次打开 GUI 时读取新配置。ConfigLoader 对无效配置回退默认值并在启动日志告警。

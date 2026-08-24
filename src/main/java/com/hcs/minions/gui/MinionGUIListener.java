@@ -75,60 +75,60 @@ public final class MinionGUIListener implements Listener {
         if (slot >= event.getInventory().getSize()) {
             return; // 玩家背包区自由操作（拿起物品/整理背包）——否则无法手持燃料与物品
         }
-        if (slot == Minion.UPGRADE_SLOT) {
+        if (slot == Minion.upgradeSlot()) {
             event.setCancelled(true);
             upgrade(player, minion);
             return;
         }
-        if (slot == Minion.AUTOSELL_SLOT) {
+        if (slot == Minion.autosellSlot()) {
             event.setCancelled(true);
             minion.setAutoSell(!minion.autoSell());
             minion.refresh(config.type(minion.type()));
             player.sendMessage(Messages.autoSellToggled(minion.autoSell()));
             return;
         }
-        if (slot == Minion.PICKUP_SLOT) {
+        if (slot == Minion.pickupSlot()) {
             event.setCancelled(true);
             pickup(player, minion);
             return;
         }
-        if (slot == Minion.COLLECT_SLOT) {
+        if (slot == Minion.collectSlot()) {
             event.setCancelled(true);
             collectAll(player, minion);
             return;
         }
-        if (slot == Minion.CLOSE_SLOT) {
+        if (slot == Minion.closeSlot()) {
             event.setCancelled(true);
             player.closeInventory();
             return;
         }
-        if (slot == Minion.UPGRADE1_SLOT || slot == Minion.UPGRADE2_SLOT) {
+        if (slot == Minion.module1Slot() || slot == Minion.module2Slot()) {
             event.setCancelled(true);
             handleUpgradeSlot(event, player, minion, slot);
             return;
         }
-        if (slot == Minion.SKIN_SLOT) {
+        if (slot == Minion.skinSlot()) {
             event.setCancelled(true);
             cycleSkin(player, minion);
             return;
         }
-        if (slot == Minion.LAYOUT_SLOT) {
+        if (slot == Minion.layoutSlot()) {
             event.setCancelled(true);
             showLayout(player, minion);
             return;
         }
-        if (slot == Minion.INFO_SLOT || slot == Minion.HEAD_SLOT) {
+        if (slot == Minion.infoSlot() || slot == Minion.headSlot()) {
             event.setCancelled(true);
             return;
         }
         if (Minion.isStorageSlot(slot)) {
-            int index = indexOf(Minion.STORAGE_SLOTS, slot);
+            int index = indexOf(Minion.storageSlots(), slot);
             if (index >= minion.unlockedSlots()) {
                 event.setCancelled(true); // 锁定槽
             }
             return; // 解锁槽自由取放
         }
-        if (slot == Minion.FUEL_SLOT) {
+        if (slot == Minion.fuelSlot()) {
             event.setCancelled(true); // 燃料槽为按钮（提示卡不可拿走）
             handleFuelClick(event, player, minion);
             return;
@@ -146,7 +146,7 @@ public final class MinionGUIListener implements Listener {
             return;
         }
         // 燃料槽已是按钮（点击即结算），此处仅兜底：槽内残留燃料直接结算，非燃料物品还给玩家
-        ItemStack fuel = minion.storage().getItem(Minion.FUEL_SLOT);
+        ItemStack fuel = minion.storage().getItem(Minion.fuelSlot());
         if (fuel != null && fuel.getType() != Material.AIR && !Minion.isFuelHint(fuel)) {
             FuelService.FuelValue fv = FuelService.valueOf(fuel.getType());
             if (fv != null) {
@@ -160,7 +160,7 @@ public final class MinionGUIListener implements Listener {
             } else {
                 giveOrDrop(player, fuel);
             }
-            minion.storage().setItem(Minion.FUEL_SLOT, null);
+            minion.storage().setItem(Minion.fuelSlot(), null);
         }
         minion.markDirty();
         manager.save(minion);
@@ -262,7 +262,7 @@ public final class MinionGUIListener implements Listener {
 
     /** 模块槽交互：手持模块点击装备，空手点击已装备槽卸下（Hypixel 原版）。 */
     private void handleUpgradeSlot(InventoryClickEvent event, Player player, Minion minion, int slot) {
-        int slotNum = (slot == Minion.UPGRADE2_SLOT) ? 2 : 1;
+        int slotNum = (slot == Minion.module2Slot()) ? 2 : 1;
         if (minion.unlockedUpgradeSlots() < slotNum) {
             player.sendMessage(Messages.UPGRADE_SLOT_LOCKED);
             return;

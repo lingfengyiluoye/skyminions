@@ -9,6 +9,7 @@ import com.hcs.minions.service.CollectionService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.PermissionService;
 import com.hcs.minions.upgrade.UpgradeRules;
+import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.MaterialNames;
@@ -54,37 +55,21 @@ public final class CollectionGui {
         }
     }
 
-    /** 卡片展示槽（中间 4 行）。 */
-    private static final int[] CARD_SLOTS = {
-            9, 10, 11, 12, 13, 14, 15, 16, 17,
-            18, 19, 20, 21, 22, 23, 24, 25, 26,
-            27, 28, 29, 30, 31, 32, 33, 34, 35,
-            36, 37, 38, 39, 40, 41, 42, 43, 44
-    };
-    private static final int CLOSE_SLOT = 8;
-    private static final int PREV_SLOT = 48;
-    private static final int PROGRESS_SLOT = 49;
-    private static final int NEXT_SLOT = 50;
-    private static final int PAGE_SIZE = CARD_SLOTS.length;
+    /** 卡片展示槽（中间 4 行，gui.yml layout.collection.card.slots 可配）。 */
+    private static int[] cardSlots() {
+        return GuiLayout.slots("collection.card.slots");
+    }
 
-    /** 顶行过滤按钮：槽位 -> 分类（null = 全部）。 */
-    private static final Map<Integer, MinionCategory> FILTER_SLOTS = Map.of(
-            1, MinionCategory.MINING,
-            2, MinionCategory.FARMING,
-            3, MinionCategory.FORAGING,
-            4, MinionCategory.COMBAT,
-            5, MinionCategory.FISHING,
-            6, MinionCategory.SPECIAL
-    );
-
-    private static final Map<MinionCategory, Material> FILTER_ICONS = Map.of(
-            MinionCategory.MINING, Material.DIAMOND_PICKAXE,
-            MinionCategory.FARMING, Material.GOLDEN_HOE,
-            MinionCategory.FORAGING, Material.IRON_AXE,
-            MinionCategory.COMBAT, Material.DIAMOND_SWORD,
-            MinionCategory.FISHING, Material.FISHING_ROD,
-            MinionCategory.SPECIAL, Material.NETHER_STAR
-    );
+    /** 顶行过滤按钮：槽位取自配置，按枚举顺序与分类一一对应。 */
+    private static Map<Integer, MinionCategory> filterSlots() {
+        int[] slots = GuiLayout.slots("collection.filter.slots");
+        MinionCategory[] cats = MinionCategory.values();
+        Map<Integer, MinionCategory> out = new LinkedHashMap<>();
+        for (int i = 0; i < Math.min(slots.length, cats.length); i++) {
+            out.put(slots[i], cats[i]);
+        }
+        return out;
+    }
 
     private final PluginConfig config;
     private final MinionManager manager;
@@ -106,13 +91,15 @@ public final class CollectionGui {
                 GuiText.title("collection-gui.title"));
 
         List<MinionType> types = visibleTypes(filter);
-        int pages = Math.max(1, (types.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        int pageSize = Math.max(1, cardSlots().length);
+        int pages = Math.max(1, (types.size() + pageSize - 1) / pageSize);
         int cur = Math.min(page, pages - 1);
 
         renderFilters(inv, filter);
         renderCards(inv, player, types, cur);
         renderNav(inv, player, cur, pages);
-        inv.setItem(CLOSE_SLOT, named(Material.BARRIER, GuiText.title("collection-gui.close.title")));
+        inv.setItem(GuiLayout.slot("collection.close.slot"),
+                named(GuiLayout.material("collection.close.material"), GuiText.title("collection-gui.close.title")));
         player.openInventory(inv);
     }
 
@@ -132,16 +119,17 @@ public final class CollectionGui {
     // ------------------------------------------------------------------
 
     private void renderFilters(Inventory inv, MinionCategory current) {
-        inv.setItem(0, filterItem(null, current));
-        for (Map.Entry<Integer, MinionCategory> e : FILTER_SLOTS.entrySet()) {
+        inv.setItem(GuiLayout.slot("collection.all.slot"), filterItem(null, current));
+        for (Map.Entry<Integer, MinionCategory> e : filterSlots().entrySet()) {
             inv.setItem(e.getKey(), filterItem(e.getValue(), current));
         }
     }
 
-    /** 过滤按钮（当前选中附加发光效果）。 */
+    /** 过滤按钮（当前选中附加发光效果）；图标材质由 layout.collection.icon.* 配置。 */
     private ItemStack filterItem(MinionCategory category, MinionCategory current) {
         boolean selected = category == current;
-        Material icon = category == null ? Material.BOOK : FILTER_ICONS.get(category);
+        Material icon = category == null ? GuiLayout.material("collection.all.material")
+                : GuiLayout.material("collection.icon." + category.name().toLowerCase());
         String name = category == null ? "全部" : category.displayName();
         Map<String, String> v = Map.of("name", name, "sel", selected ? "● " : "");
         ItemStack item = named(icon, GuiText.title("collection-gui.filter.title", v));
@@ -157,8 +145,9 @@ public final class CollectionGui {
     private void renderCards(Inventory inv, Player player, List<MinionType> types, int page) {
         UUID owner = player.getUniqueId();
         Map<MinionType, long[]> stats = statsOf(owner);
-        int start = page * PAGE_SIZE;
-        for (int i = 0; i < CARD_SLOTS.length; i++) {
+        int[] slots = cardSlots();
+        int start = page * Math.max(1, slots.length);
+        for (int i = 0; i < slots.length; i++) {
             int idx = start + i;
             if (idx >= types.size()) {
                 break;
@@ -166,9 +155,9 @@ public final class CollectionGui {
             MinionType type = types.get(idx);
             boolean unlocked = permissions.isUnlocked(player, type);
             if (unlocked) {
-                inv.setItem(CARD_SLOTS[i], cardItem(type, stats.getOrDefault(type, new long[3]), owner));
+                inv.setItem(slots[i], cardItem(type, stats.getOrDefault(type, new long[3]), owner));
             } else {
-                inv.setItem(CARD_SLOTS[i], lockedCard(type, owner));
+                inv.setItem(slots[i], lockedCard(type, owner));
             }
         }
     }
@@ -177,7 +166,7 @@ public final class CollectionGui {
     private ItemStack cardItem(MinionType type, long[] stats, UUID owner) {
         MinionTypeConfig cfg = config.type(type);
         if (cfg == null) {
-            return named(Material.GRAY_STAINED_GLASS_PANE, Component.empty());
+            return named(GuiLayout.material("collection.locked.material"), Component.empty());
         }
         int maxLevel = (int) stats[1];
         long collected = collection.get(owner, cfg.product());
@@ -218,25 +207,28 @@ public final class CollectionGui {
         v.put("collected", String.valueOf(collected));
         v.put("need", String.valueOf(Math.max(1, need)));
         v.put("product", cfg == null ? "?" : MaterialNames.of(cfg.product()));
-        return named(Material.BARRIER, GuiText.title("collection-gui.locked.title", v),
+        return named(GuiLayout.material("collection.locked.material"), GuiText.title("collection-gui.locked.title", v),
                 GuiText.lore("collection-gui.locked.lore", v));
     }
 
     private void renderNav(Inventory inv, Player player, int page, int pages) {
         if (page > 0) {
-            inv.setItem(PREV_SLOT, named(Material.ARROW, GuiText.title("collection-gui.prev.title")));
+            inv.setItem(GuiLayout.slot("collection.prev.slot"),
+                    named(GuiLayout.material("collection.prev.material"), GuiText.title("collection-gui.prev.title")));
         }
         if (page < pages - 1) {
-            inv.setItem(NEXT_SLOT, named(Material.ARROW, GuiText.title("collection-gui.next.title")));
+            inv.setItem(GuiLayout.slot("collection.next.slot"),
+                    named(GuiLayout.material("collection.next.material"), GuiText.title("collection-gui.next.title")));
         }
         Map<String, String> v = Map.of(
                 "unlocked", String.valueOf(unlockedCount(player)),
                 "total", String.valueOf(MinionType.values().length),
                 "page", String.valueOf(page + 1),
                 "pages", String.valueOf(pages));
-        inv.setItem(PROGRESS_SLOT, named(Material.BOOK,
-                GuiText.title("collection-gui.progress.title", v),
-                GuiText.lore("collection-gui.progress.lore", v)));
+        inv.setItem(GuiLayout.slot("collection.progress.slot"),
+                named(GuiLayout.material("collection.progress.material"),
+                        GuiText.title("collection-gui.progress.title", v),
+                        GuiText.lore("collection-gui.progress.lore", v)));
     }
 
     // ------------------------------------------------------------------
