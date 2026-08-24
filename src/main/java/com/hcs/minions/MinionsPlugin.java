@@ -5,6 +5,7 @@ import com.hcs.minions.command.MinionsCommand;
 import com.hcs.minions.config.ConfigLoader;
 import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.PluginConfig;
+import com.hcs.minions.core.PermissionRegistry;
 import com.hcs.minions.core.ServiceRegistry;
 import com.hcs.minions.gui.CollectionGui;
 import com.hcs.minions.gui.CollectionGuiListener;
@@ -59,6 +60,10 @@ public final class MinionsPlugin extends JavaPlugin {
         PluginConfig config = ConfigLoader.load(this);
         ConfigProvider configProvider = new ConfigProvider(this, config);
         registry.setConfig(config);
+
+        // 程序化注册全部权限节点（paper-plugin.yml 不支持 permissions 段，
+        // 必须在此注册 LuckPerms /lp tree 才可见、默认值才生效）
+        PermissionRegistry.registerAll();
 
         AsyncExecutor async = new AsyncExecutor();
         registry.setAsync(async);

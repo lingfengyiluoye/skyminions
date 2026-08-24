@@ -259,6 +259,8 @@ public final class GuiLayout {
             SLOT_DEFAULTS.put("craft.result.slot", 24);
             SLOT_DEFAULTS.put("craft.info.slot", 4);
             SLOT_DEFAULTS.put("craft.back.slot", 49);
+            SLOT_DEFAULTS.put("craft.guide.slot", 45);
+            MATERIAL_DEFAULTS.put("craft.guide.material", Material.BOOK);
             SLOTS_DEFAULTS.put("craft.decor.slots", new int[]{
                     0, 1, 2, 3, 5, 6, 7, 8,
                     9, 10, 14, 15, 16, 17,

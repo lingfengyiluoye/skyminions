@@ -55,8 +55,8 @@ public record MinionTypeConfig(
         Material rareDrop,
         double rareDropChance,
         long unlockAmount,
-        /** 指定等级的配方整行覆盖（稀有掉落回流载体）：键 = 升级前等级，值 = 该级完整配方。 */
-        Map<Integer, Map<ItemRef, Long>> recipeOverrides,
+    /** 指定等级的配方整行覆盖（稀有掉落回流载体）：键 = 升级前等级，值 = 该级完整配方。 */
+    Map<Integer, Map<ItemRef, Long>> recipeOverrides,
         /** 战斗型定向目标（实体类型名集合，空 = 任意敌对）。 */
         java.util.Set<String> preferredTargets,
         /** 畜牧型指定畜种（实体类型名，null = 从池中随机）。 */
@@ -166,6 +166,11 @@ public record MinionTypeConfig(
         }
         int idx = Math.min(Math.max(level, 1), cooldownPerLevel.length) - 1;
         return cooldownPerLevel[idx];
+    }
+
+    /** 配置了整行覆盖的等级集合（供 /minion materials 等指引展示）。 */
+    public java.util.Set<Integer> overrideLevels() {
+        return recipeOverrides.keySet();
     }
 
     /**

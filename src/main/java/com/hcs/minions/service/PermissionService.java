@@ -12,17 +12,17 @@ import org.bukkit.permissions.PermissionAttachmentInfo;
  *
  * <p>可授予的权限（在 LuckPerms 里给组或玩家）：
  * <ul>
- *   <li>{@code hcs.minions.admin} —— 管理权限</li>
- *   <li>{@code hcs.minions.type.<type>} —— 能否使用某类仆从</li>
- *   <li>{@code hcs.minions.limit.<n>} —— 仆从数量上限（取拥有的最大 n，默认用 config）</li>
+ *   <li>{@code minions.admin} —— 管理权限</li>
+ *   <li>{@code minions.type.<type>} —— 能否使用某类仆从</li>
+ *   <li>{@code minions.limit.<n>} —— 仆从数量上限（取拥有的最大 n，默认用 config）</li>
  * </ul>
  */
 public final class PermissionService {
 
-    /** 仆从数量上限权限前缀：hcs.minions.limit.<n> */
-    private static final String LIMIT_PREFIX = "hcs.minions.limit.";
+    /** 仆从数量上限权限前缀：minions.limit.<n> */
+    private static final String LIMIT_PREFIX = "minions.limit.";
 
-    /** 数量上限权限支持的最大值（含 hcs.minions.limit.* 通配）。 */
+    /** 数量上限权限支持的最大值（含 minions.limit.* 通配）。 */
     private static final int MAX_SCAN = 512;
 
     private final ConfigProvider config;
@@ -34,14 +34,14 @@ public final class PermissionService {
     }
 
     public boolean isAdmin(Player player) {
-        return player.hasPermission("hcs.minions.admin");
+        return player.hasPermission("minions.admin");
     }
 
     public boolean canUseType(Player player, MinionType type) {
         if (isAdmin(player)) {
             return true;
         }
-        if (!player.hasPermission("hcs.minions.type." + type.key())) {
+        if (!player.hasPermission("minions.type." + type.key())) {
             return false;
         }
         return isUnlocked(player, type);
@@ -64,8 +64,8 @@ public final class PermissionService {
     }
 
     /**
-     * 玩家仆从数量上限：从生效权限集合中一次性解析 {@code hcs.minions.limit.<n>} 的最大 n，
-     * 支持 {@code hcs.minions.limit.*} 通配；未授予则回退到配置默认值。
+     * 玩家仆从数量上限：从生效权限集合中一次性解析 {@code minions.limit.<n>} 的最大 n，
+     * 支持 {@code minions.limit.*} 通配；未授予则回退到配置默认值。
      *
      * <p>旧实现逐 n 调用 {@code hasPermission}（1~512 次），本实现改为单次遍历
      * {@code Player#getEffectivePermissions()}，对 LuckPerms 同样有效 —— LP 会把自己注册为
@@ -91,7 +91,7 @@ public final class PermissionService {
                     best = n;
                 }
             } catch (NumberFormatException ignored) {
-                // 非数字后缀（如 hcs.minions.limit.vip）忽略
+                // 非数字后缀（如 minions.limit.vip）忽略
             }
         }
         return best;

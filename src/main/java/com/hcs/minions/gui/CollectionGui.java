@@ -186,7 +186,8 @@ public final class CollectionGui {
                 if (row > 3) {
                     break;
                 }
-                v.put("r" + row, "<dark_gray>· " + e.getKey().displayName() + " ×" + e.getValue());
+                v.put("r" + row, com.hcs.minions.util.MaterialGuide.wrapHover(e.getKey().guideMaterial(),
+                        "<dark_gray>· " + e.getKey().displayName() + " ×" + e.getValue()));
                 row++;
             }
             if (row <= 3 && UpgradeRules.needsPreviousBody(maxLevel, cfg.maxLevel(), config.get().upgradeRequirePreviousBody())) {

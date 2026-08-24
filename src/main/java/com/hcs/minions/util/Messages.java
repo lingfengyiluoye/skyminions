@@ -57,6 +57,7 @@ public final class Messages {
     public static Component USAGE;
     public static Component USAGE_GIVE;
     public static Component USAGE_UPGRADE;
+    public static Component USAGE_MATERIALS;
     public static Component LEVEL_MUST_BE_NUMBER;
     public static Component SKIN_TIP;
     public static Component LAYOUT_HEADER;
@@ -79,7 +80,7 @@ public final class Messages {
     private static void defaults() {
         DEFAULTS.put("no-permission", "<red>✖ 你没有权限使用该仆从</red>");
         DEFAULTS.put("must-place-on-island", "<red>✖ 仆从只能放置在 <gold>你的空岛</gold> 内</red>");
-        DEFAULTS.put("limit-reached", "<red>✖ 仆从数量已达上限</red>\n<gray>升级权限 <gold>hcs.minions.limit.\\<数量></gold> 可增加上限</gray>");
+        DEFAULTS.put("limit-reached", "<red>✖ 仆从数量已达上限</red>\n<gray>升级权限 <gold>minions.limit.\\<数量></gold> 可增加上限</gray>");
         DEFAULTS.put("minion-too-close", "<red>✖ 离其他仆从太近了</red>\n<gray>两个仆从的工作区不能重叠，请换个位置</gray>");
         DEFAULTS.put("not-your-minion", "<red>✖ 无法操作该仆从</red>\n<gray>仅限仆从主人或所在空岛的团队成员使用</gray>");
         DEFAULTS.put("player-only", "<red>✖ 该命令仅玩家可执行</red>");
@@ -107,7 +108,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>");
         DEFAULTS.put("upgrade-missing-body", "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>");
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
-        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
+        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion materials \\<类型> [等级]</white> <gray>- 材料获取指南</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
         DEFAULTS.put("usage-give", "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>");
         DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖)</dark_gray>");
         DEFAULTS.put("level-must-be-number", "<red>✖ 等级必须是数字</red>");
@@ -141,6 +142,11 @@ public final class Messages {
         DEFAULTS.put("offline-total", "<green>✔ 共 {0} 件已入仓</green>\n<gray>仓库满后不再累计，闲置收益以仓储为上限</gray>");
         DEFAULTS.put("mult-fuel-equipped", "<green>✔ 已安装产量催化剂</green>\n<gray>产出 <yellow>×{0}</yellow>，持续 {1} 秒（仅在线生效）</gray>");
         DEFAULTS.put("mult-fuel-weak", "<gray>当前已有 ≥{0} 的更强倍率在生效，该催化剂未被消耗</gray>");
+        DEFAULTS.put("usage-materials", "<red>用法</red><gray>: /minion materials \\<类型> [等级]</gray>");
+        DEFAULTS.put("materials-header", "<gold><bold>▼ 材料指南 · {0}</bold></gold> <gray>{1} → {2}</gray>");
+        DEFAULTS.put("materials-entry", "<white>· {0}</white> <yellow>×{1}</yellow>");
+        DEFAULTS.put("materials-override-note", "<light_purple>✦ 本级为专属覆盖配方（含稀有秘藏）</light_purple>");
+        DEFAULTS.put("materials-base-note", "<gray>以上为该级完整需求；基础配方随等级 ×growth 陡增</gray>");
     }
 
     /** 从 messages.yml 加载文案；文件不存在则写出默认文件。可重复调用（热重载）。 */
@@ -179,6 +185,7 @@ public final class Messages {
         USAGE = render("usage");
         USAGE_GIVE = render("usage-give");
         USAGE_UPGRADE = render("usage-upgrade");
+        USAGE_MATERIALS = render("usage-materials");
         LEVEL_MUST_BE_NUMBER = render("level-must-be-number");
         SKIN_TIP = render("skin-tip");
         LAYOUT_HEADER = render("layout-header");
@@ -353,6 +360,26 @@ public final class Messages {
     /** 催化剂弱于当前倍率、未被消耗提示。 */
     public static Component multFuelWeak(double currentMultiplier) {
         return render("mult-fuel-weak", currentMultiplier);
+    }
+
+    /** 材料指南标题（{0}=类型名 {1}=当前等级罗马字 {2}=下一等级罗马字）。 */
+    public static Component materialsHeader(String typeName, String fromTier, String toTier) {
+        return render("materials-header", typeName, fromTier, toTier);
+    }
+
+    /** 材料指南单行需求。 */
+    public static Component materialsEntry(String name, long need) {
+        return render("materials-entry", name, need);
+    }
+
+    /** 覆盖配方提示行。 */
+    public static Component materialsOverrideNote() {
+        return render("materials-override-note");
+    }
+
+    /** 基础曲线说明行。 */
+    public static Component materialsBaseNote() {
+        return render("materials-base-note");
     }
 
     // ------------------------------------------------------------------

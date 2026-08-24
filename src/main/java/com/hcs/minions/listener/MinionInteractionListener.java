@@ -36,7 +36,7 @@ import java.util.UUID;
 
 /**
  * 仆从放置与交互监听。放置生成盔甲架小人；右键打开仓库、潜行右键拾取、手持燃料补燃料。
- * 放置受 LuckPerms 权限（hcs.minions.type.* / hcs.minions.limit.*）限制。
+ * 放置受 LuckPerms 权限（minions.type.* / minions.limit.*）限制。
  */
 public final class MinionInteractionListener implements Listener {
 

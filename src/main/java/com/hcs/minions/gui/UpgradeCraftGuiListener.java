@@ -9,6 +9,7 @@ import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.util.Messages;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -81,10 +82,29 @@ public final class UpgradeCraftGuiListener implements Listener {
             UpgradeCraftGui.refresh(inv, minion, items, config);
             return;
         }
+        if (slot == UpgradeCraftGui.guideSlot()) {
+            sendGuide(player, minion);
+            return;
+        }
         if (slot == UpgradeCraftGui.backSlot()) {
             manager.openGui(player, minion); // 关闭时 onClose 归还格内物品
         }
         // 箭头与装饰槽：仅拦截
+    }
+
+    /** 材料指南：聊天栏输出本级全部材料的合成/来源（含原版名对照与不可合成特例）。 */
+    private void sendGuide(Player player, Minion minion) {
+        com.hcs.minions.config.MinionTypeConfig cfg = config.get().type(minion.type());
+        var level = minion.level();
+        player.sendMessage(Messages.materialsHeader(cfg.displayName(),
+                com.hcs.minions.util.Roman.of(level), com.hcs.minions.util.Roman.of(level + 1)));
+        for (var e : cfg.recipeFor(level).entrySet()) {
+            Material mat = e.getKey().guideMaterial();
+            player.sendMessage(Messages.materialsEntry(e.getKey().displayName(), e.getValue()));
+            for (var line : com.hcs.minions.util.MaterialGuide.chatLines(mat)) {
+                player.sendMessage(line);
+            }
+        }
     }
 
     @EventHandler

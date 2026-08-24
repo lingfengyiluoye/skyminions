@@ -6,6 +6,7 @@ import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemCodec;
 import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.MaterialGuide;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Roman;
 import net.kyori.adventure.text.Component;
@@ -614,11 +615,12 @@ public final class Minion {
                 GuiText.title(key + ".title", v), GuiText.lore(key + ".lore", v));
     }
 
-    /** 单行材料对比（MiniMessage 片段）：材料名颜色随足够与否变化。 */
+    /** 单行材料对比（MiniMessage 片段）：材料名颜色随足够与否变化，悬浮显示获取指引。 */
     private static String recipeLine(ItemRef ref, long need, long owned) {
         String nameColor = owned >= need ? "<green>" : "<red>";
-        return "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
+        String inner = "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
                 + " <gray>已有 " + owned;
+        return MaterialGuide.wrapHover(ref.guideMaterial(), inner);
     }
 
     private ItemStack upgradeSlotItem(MinionUpgradeType upgrade, int n, boolean unlocked) {

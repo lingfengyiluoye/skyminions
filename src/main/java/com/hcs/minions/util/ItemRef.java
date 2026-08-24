@@ -54,6 +54,9 @@ public abstract class ItemRef {
     /** 配置键（日志/回写用）。 */
     public abstract String configKey();
 
+    /** 指南查询用的代表材质（原版=自身；自定义物品=原型图标）。 */
+    public abstract Material guideMaterial();
+
     /** /minion reload 后清空原型缓存（CraftEngine 物品可能被重定义）。 */
     public static void clearCache() {
         CustomRef.PROTOTYPES.clear();
@@ -94,6 +97,11 @@ public abstract class ItemRef {
         @Override
         public String configKey() {
             return material.name();
+        }
+
+        @Override
+        public Material guideMaterial() {
+            return material;
         }
 
         @Override
@@ -162,6 +170,11 @@ public abstract class ItemRef {
         @Override
         public String configKey() {
             return id;
+        }
+
+        @Override
+        public Material guideMaterial() {
+            return icon();
         }
 
         /** 惰性构建原型（缓存）；CraftEngine 未安装/物品未注册返回 null。 */

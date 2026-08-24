@@ -8,6 +8,7 @@ import com.hcs.minions.upgrade.UpgradeRules;
 import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.MaterialGuide;
 import com.hcs.minions.util.Roman;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -68,6 +69,10 @@ public final class UpgradeCraftGui {
         return GuiLayout.slot("craft.back.slot");
     }
 
+    public static int guideSlot() {
+        return GuiLayout.slot("craft.guide.slot");
+    }
+
     public static boolean isGridSlot(int slot) {
         for (int s : gridSlots()) {
             if (s == slot) {
@@ -96,6 +101,8 @@ public final class UpgradeCraftGui {
                 GuiText.title("craft-gui.arrow.title")));
         inv.setItem(backSlot(), named(GuiLayout.material("craft.back.material"),
                 GuiText.title("craft-gui.back.title")));
+        inv.setItem(guideSlot(), named(GuiLayout.material("craft.guide.material"),
+                GuiText.title("craft-gui.guide.title"), GuiText.lore("craft-gui.guide.lore")));
         inv.setItem(infoSlot(), infoItem(inv, minion, items, cfg, config));
         inv.setItem(resultSlot(), lackItem());
         player.openInventory(inv);
@@ -284,11 +291,12 @@ public final class UpgradeCraftGui {
                 GuiText.title("craft-gui.info.title", v), GuiText.lore("craft-gui.info.lore", v));
     }
 
-    /** 单行材料对比（MiniMessage 片段）：材料名颜色随是否放够变化。 */
+    /** 单行材料对比（MiniMessage 片段）：材料名颜色随是否放够变化，悬浮显示获取指引。 */
     private static String recipeLine(ItemRef ref, long need, long placedCount) {
         String nameColor = placedCount >= need ? "<green>" : "<red>";
-        return "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
+        String inner = "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
                 + " <gray>已放 " + placedCount;
+        return MaterialGuide.wrapHover(ref.guideMaterial(), inner);
     }
 
     /** 本体行：需要 1 个当前等级的仆从生成物。 */

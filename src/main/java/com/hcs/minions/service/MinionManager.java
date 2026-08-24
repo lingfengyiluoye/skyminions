@@ -560,6 +560,13 @@ public final class MinionManager {
     public List<String> statsLines() {
         long upMillis = startMillis <= 0 ? 0 : System.currentTimeMillis() - startMillis;
         long upSeconds = upMillis / 1000;
+        long permNodes;
+        try {
+            permNodes = Bukkit.getPluginManager().getPermissions().stream()
+                    .filter(per -> per.getName().startsWith("minions.")).count();
+        } catch (Exception e) {
+            permNodes = -1; // 无头单测等无 Bukkit 场景
+        }
         String uptime = upSeconds >= 3600
                 ? (upSeconds / 3600) + " 小时 " + (upSeconds % 3600) / 60 + " 分钟"
                 : (upSeconds / 60) + " 分钟 " + upSeconds % 60 + " 秒";
@@ -575,6 +582,9 @@ public final class MinionManager {
         List<String> out = new ArrayList<>();
         out.add("运行时长: " + uptime);
         out.add("调度周期数: " + tickCycles.get());
+        if (permNodes >= 0) {
+            out.add("已注册权限节点: " + permNodes + " 个（minions.*）");
+        }
         out.add("已放置仆从: " + minions.size() + " 个（工作中 " + working + "）");
         out.add("稀有掉落累计: " + rareDropRolls.get() + " 次");
         out.add("全场累计产出: " + totalProducedAll + " 件");

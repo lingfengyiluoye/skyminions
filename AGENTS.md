@@ -79,10 +79,10 @@ GUI 文案由 `gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>
 ## 权限结构
 
 ```
-hcs.minions.admin           # 管理权限（/minion 命令，默认 op）
-hcs.minions.use             # 使用仆从（默认人人有）
-hcs.minions.type.<type>     # 按类型控制
-hcs.minions.limit.<n>       # 数量上限（取最大 n）
+minions.admin           # 管理权限（/minion 命令，默认 op）
+minions.use             # 使用仆从（默认人人有）
+minions.type.<类型中文名>     # 按类型控制
+minions.limit.<n>       # 数量上限（取最大 n）
 ```
 
 ## 注意事项

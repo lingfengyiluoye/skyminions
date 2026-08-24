@@ -383,6 +383,12 @@ public final class GuiText {
             ));
             MAP.put("craft-gui.arrow.title", "<gray>合成</gray>");
             MAP.put("craft-gui.back.title", "<yellow>◀ 返回仆从界面</yellow>");
+            MAP.put("craft-gui.guide.title", "<gold>材料指南</gold>");
+            MAP.put("craft-gui.guide.lore", List.of(
+                    "<gray>查看本级材料的获取方式</gray>",
+                    "<dark_gray>合成配方 / 原版名称 / 其他来源</dark_gray>",
+                    "<yellow>点击后在聊天栏展示 ▶</yellow>"
+            ));
         }
 
         private Defaults() {
