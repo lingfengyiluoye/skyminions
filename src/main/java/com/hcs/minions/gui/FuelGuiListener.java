@@ -1,6 +1,6 @@
 package com.hcs.minions.gui;
 
-import com.hcs.minions.config.PluginConfig;
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.FuelService;
 import com.hcs.minions.service.MinionManager;
@@ -13,15 +13,17 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Map;
+
 /**
  * 燃料选择 GUI 交互：点击选项即从背包装燃料；状态卡潜行点击卸下限时燃料。
  */
 public final class FuelGuiListener implements Listener {
 
     private final MinionManager manager;
-    private final PluginConfig config;
+    private final ConfigProvider config;
 
-    public FuelGuiListener(MinionManager manager, PluginConfig config) {
+    public FuelGuiListener(MinionManager manager, ConfigProvider config) {
         this.manager = manager;
         this.config = config;
     }
@@ -57,7 +59,10 @@ public final class FuelGuiListener implements Listener {
             if (option == null || option.getType() == GuiLayout.material("fuel-gui.empty.material")) {
                 return;
             }
-            install(player, minion, option.getType(), event.isShiftClick() ? 1 : option.getAmount());
+            // 修复「安装全部」：展示项 amount 恒为 1 不能作为数量来源，
+            // 以点击时背包实际库存为准（潜行=仅 1 个）
+            int want = event.isShiftClick() ? 1 : countInInventory(player, option.getType());
+            install(player, minion, option.getType(), want);
         }
     }
 
@@ -81,8 +86,29 @@ public final class FuelGuiListener implements Listener {
         if (fv.permanent()) {
             amount = Math.min(amount, 1); // 永久燃料仅消耗 1 个
         }
-        if (amount <= 0 || !removeFromInventory(player, material, amount)) {
+        if (amount <= 0) {
             return;
+        }
+        if (fv.hasMultiplier()) {
+            // 催化剂：仅更强倍率才安装并消耗，弱者不扣库存
+            if (!minion.addMultiplier(fv.multiplier(), fv.durationTicks() * amount)) {
+                player.sendMessage(Messages.multFuelWeak(minion.prodMultiplier()));
+                return;
+            }
+            removeFromInventory(player, material, amount);
+            player.sendMessage(Messages.multFuelEquipped(fv.multiplier(), fv.durationTicks() * amount / 20L));
+            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+            manager.save(minion);
+            FuelGui.open(player, minion);
+            return;
+        }
+        if (!removeFromInventory(player, material, amount)) {
+            return;
+        }
+        if (material == Material.LAVA_BUCKET) {
+            // 桶装燃料按消耗个数返还空桶（对齐原版习惯）
+            giveOrDrop(player, new org.bukkit.inventory.ItemStack(Material.BUCKET,
+                    Math.min(amount, Material.BUCKET.getMaxStackSize())));
         }
         if (fv.permanent()) {
             minion.addPermanentFuel(fv.boost());
@@ -91,7 +117,7 @@ public final class FuelGuiListener implements Listener {
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
             player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
         }
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         FuelGui.open(player, minion); // 重建界面：刷新库存数量与状态卡
     }
@@ -108,7 +134,7 @@ public final class FuelGuiListener implements Listener {
         }
         minion.setFuelTicks(0);
         minion.setFuelBoost(1.0);
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.fuelUnequipped());
         FuelGui.open(player, minion);
@@ -145,5 +171,12 @@ public final class FuelGuiListener implements Listener {
         }
         player.getInventory().setStorageContents(contents);
         return remaining == 0;
+    }
+
+    private static void giveOrDrop(Player player, ItemStack item) {
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(item);
+        for (ItemStack leftover : overflow.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+        }
     }
 }

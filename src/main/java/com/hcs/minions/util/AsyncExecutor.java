@@ -75,5 +75,20 @@ public final class AsyncExecutor implements AutoCloseable {
     public void close() {
         scheduler.shutdownNow();
         virtual.shutdownNow();
+        // 等待在途任务（如正在执行的落库 upsert）收尾，避免 onDisable 后续
+        // store.close() 打断进行中的写操作导致静默丢数据；超时则放弃等待并告警
+        await("virtual", virtual);
+        await("scheduler", scheduler);
+    }
+
+    private static void await(String name, ExecutorService pool) {
+        try {
+            if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+                Logs.warn("异步执行器 {} 在 5 秒内未完全终止（可能有任务卡死）", name);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Logs.warn("等待异步执行器 {} 终止时被中断", name);
+        }
     }
 }

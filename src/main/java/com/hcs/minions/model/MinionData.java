@@ -18,6 +18,12 @@ public record MinionData(
         int y,
         int z,
         long fuelTicks,
+        /** 限时燃料当前加速倍率（与 fuelTicks 同寿命；1.0 = 无加成）。修复重启后 boost 归一。 */
+        double fuelBoost,
+        /** 产量倍率燃料当前值（催化剂类，1.0 = 无）。 */
+        double multBoost,
+        /** 产量倍率剩余 tick。 */
+        long multTicks,
         long lastActiveEpochMs,
         String islandId,
         String upgrade1,

@@ -158,7 +158,7 @@ public final class MaterialNames {
             Map.entry("EXPERIENCE_BOTTLE", "附魔之瓶"),
             // 燃料与红石
             Map.entry("CHARCOAL", "木炭"),
-            Map.entry("COAL_BLOCK", "煤炭块"),
+            Map.entry("COAL_BLOCK", "煤炭精块"),
             Map.entry("LAVA_BUCKET", "岩浆桶"),
             Map.entry("DAYLIGHT_DETECTOR", "日光探测器"),
             Map.entry("REDSTONE_TORCH", "红石火把"),
@@ -300,7 +300,30 @@ public final class MaterialNames {
             Map.entry("ECHO_SHARD", "回响碎片"),
             Map.entry("RECOVERY_COMPASS", "追溯指针"),
             Map.entry("GOAT_HORN", "山羊角"),
-            Map.entry("ARMADILLO_SCUTE", "犰狳鳞甲")
+            Map.entry("ARMADILLO_SCUTE", "犰狳鳞甲"),
+            // ---- 仆从升级语境：二阶"精块"与新增材料（语境化别名，用原版物品讲自己的名字） ----
+            Map.entry("RAW_IRON_BLOCK", "粗铁精块"),
+            Map.entry("RAW_COPPER_BLOCK", "粗铜精块"),
+            Map.entry("RAW_GOLD_BLOCK", "金矿精块"),
+            Map.entry("LAPIS_BLOCK", "青金精块"),
+            Map.entry("DIAMOND_BLOCK", "钻石精块"),
+            Map.entry("EMERALD_BLOCK", "绿宝精块"),
+            Map.entry("QUARTZ_BLOCK", "石英精块"),
+            Map.entry("CRYING_OBSIDIAN", "泣晶黑曜"),
+            Map.entry("HAY_BLOCK", "麦穗精块"),
+            Map.entry("BAMBOO_BLOCK", "草木精块"),
+            Map.entry("BONE_BLOCK", "骸骨精块"),
+            Map.entry("PRISMARINE_BRICKS", "海洋精块"),
+            Map.entry("MELON", "西瓜"),
+            Map.entry("SPYGLASS", "望远镜"),
+            Map.entry("TNT", "炸药桶"),
+            Map.entry("WITHER_ROSE", "凋零玫瑰"),
+            Map.entry("PITCHER_POD", "瓶子草荚"),
+            Map.entry("SUSPICIOUS_STEW", "迷之炖菜"),
+            Map.entry("DRAGON_HEAD", "龙首"),
+            Map.entry("FERMENTED_SPIDER_EYE", "发酵蛛眼"),
+            Map.entry("CARROT_ON_A_STICK", "胡萝卜钓竿"),
+            Map.entry("LEATHER_HORSE_ARMOR", "皮革马铠")
     );
 
     private MaterialNames() {

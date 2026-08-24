@@ -4,7 +4,6 @@ import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionData;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -15,17 +14,23 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface MinionRepository extends AutoCloseable {
 
-    CompletableFuture<Optional<Minion>> find(UUID id);
+    /**
+     * 异步读取全量持久化快照（原始数据，不构造 Bukkit 对象）。
+     * 调用方须在主线程/全局线程完成 {@code Minion} 装配与 Inventory 初始化
+     * （Bukkit Inventory 禁止在异步线程创建/读写）。
+     */
+    CompletableFuture<List<MinionData>> findAllData();
 
-    CompletableFuture<List<Minion>> findAll();
+    /**
+     * 将仆从纳入缓存并挂接落库通知钩子（不置脏，用于启动装载）。
+     * 之后该仆从任何 {@code markDirty()} 都会自动进入脏集合参与周期落库。
+     */
+    void register(Minion minion);
 
-    /** 写入缓存并异步落库（write-through）。 */
+    /** 写入缓存、挂接钩子并置脏（write-through 的登记动作，实际写入由批量落库执行）。 */
     CompletableFuture<Void> save(Minion minion);
 
     CompletableFuture<Void> delete(UUID id);
-
-    /** 将当前脏对象批量异步落库（由全局调度器周期调用）。 */
-    void flushDirty();
 
     /** 收集脏仆从 ID（任意线程，不访问 Inventory）。 */
     List<UUID> collectDirtyIds();

@@ -1,7 +1,6 @@
 package com.hcs.minions.work.lumberjack;
 
-import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.BlockOps;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
@@ -47,15 +46,9 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
         return m;
     }
 
-    private final MinionTypeConfig cfg;
-
-    public LumberjackStrategy(MinionTypeConfig cfg) {
-        this.cfg = cfg;
-    }
-
     @Override
-    public MinionType type() {
-        return MinionType.LUMBERJACK;
+    public MinionBehavior behavior() {
+        return MinionBehavior.FORAGING;
     }
 
     @Override
@@ -65,9 +58,10 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
 
     @Override
     public WorkOutcome performWork(WorkContext ctx) {
+        Set<Material> allowed = ctx.cfg().targetsAt(ctx.minion().level()); // 分级解锁目标
         Optional<Block> found = ctx.searcher().find(
                 ctx.world(), ctx.anchor(), ctx.radius(),
-                b -> cfg.targets().contains(b.getType()),
+                b -> allowed.contains(b.getType()),
                 ctx.minion()
         );
         if (found.isEmpty()) {
@@ -75,7 +69,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
         }
 
         // 整树检测：BFS 收集相连原木，但限制在工作半径范围内（修复"虚空砍视野外木头"）
-        List<Block> logs = collectTree(found.get(), ctx.anchor(), ctx.radius());
+        List<Block> logs = collectTree(found.get(), ctx.anchor(), ctx.radius(), allowed);
         Block root = lowest(logs);
         Material rootType = root.getType(); // 砍伐前记录树种，砍后原木会变空气
         List<ItemStack> allDrops = new ArrayList<>();
@@ -117,7 +111,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
      * 因为树高（5~8 格，丛林巨树更高）远超工作半径，若纵向也限 radius
      * 就只能砍掉树根部几格，无法连锁整棵树。</p>
      */
-    private List<Block> collectTree(Block start, Block anchor, int radius) {
+    private List<Block> collectTree(Block start, Block anchor, int radius, Set<Material> allowed) {
         int ax = anchor.getX();
         int ay = anchor.getY();
         int az = anchor.getZ();
@@ -134,7 +128,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
             out.add(current);
             for (int[] d : dirs) {
                 Block next = current.getRelative(d[0], d[1], d[2]);
-                if (visited.contains(next) || !cfg.targets().contains(next.getType())) {
+                if (visited.contains(next) || !allowed.contains(next.getType())) {
                     continue;
                 }
                 // 水平范围约束：超出工作半径的原木不扩散（防虚空砍树）
@@ -150,10 +144,5 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
             }
         }
         return out;
-    }
-
-    @Override
-    public int cooldownTicks() {
-        return cfg.cooldownTicks();
     }
 }

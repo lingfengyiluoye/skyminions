@@ -1,7 +1,7 @@
 package com.hcs.minions.service;
 
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.model.MinionType;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachmentInfo;
@@ -25,10 +25,10 @@ public final class PermissionService {
     /** 数量上限权限支持的最大值（含 hcs.minions.limit.* 通配）。 */
     private static final int MAX_SCAN = 512;
 
-    private final PluginConfig config;
+    private final ConfigProvider config;
     private final CollectionService collection;
 
-    public PermissionService(PluginConfig config, CollectionService collection) {
+    public PermissionService(ConfigProvider config, CollectionService collection) {
         this.config = config;
         this.collection = collection;
     }
@@ -53,10 +53,10 @@ public final class PermissionService {
      * 否则要求该玩家产物（product）累计收集量达标。管理员在 {@link #canUseType} 已提前放行。
      */
     public boolean isUnlocked(Player player, MinionType type) {
-        if (!config.collectionUnlockEnabled()) {
+        if (!config.get().collectionUnlockEnabled()) {
             return true;
         }
-        MinionTypeConfig cfg = config.type(type);
+        MinionTypeConfig cfg = config.get().type(type);
         if (cfg == null || !cfg.hasUnlockRequirement()) {
             return true;
         }
@@ -72,7 +72,7 @@ public final class PermissionService {
      * Bukkit 权限提供方，其（含继承）权限会出现在生效权限集合中。
      */
     public int maxMinions(Player player) {
-        int best = config.maxMinionsPerPlayer();
+        int best = config.get().maxMinionsPerPlayer();
         for (PermissionAttachmentInfo info : player.getEffectivePermissions()) {
             if (!info.getValue()) {
                 continue; // 显式拒绝的权限不参与计算

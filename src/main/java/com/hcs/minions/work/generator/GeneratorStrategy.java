@@ -1,9 +1,8 @@
 package com.hcs.minions.work.generator;
 
-import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.model.BlockLocation;
 import com.hcs.minions.model.Minion;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.BlockOps;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
@@ -27,15 +26,9 @@ import java.util.Optional;
  */
 public final class GeneratorStrategy implements MinionWorkStrategy {
 
-    private final MinionTypeConfig cfg;
-
-    public GeneratorStrategy(MinionTypeConfig cfg) {
-        this.cfg = cfg;
-    }
-
     @Override
-    public MinionType type() {
-        return MinionType.COBBLE;
+    public MinionBehavior behavior() {
+        return MinionBehavior.GENERATOR;
     }
 
     @Override
@@ -79,8 +72,14 @@ public final class GeneratorStrategy implements MinionWorkStrategy {
         Minion minion = ctx.minion();
         Block gen = ctx.anchor().getRelative(BlockFace.UP);
         if (minion.hasLayoutBlocks()) {
-            if (gen.getType() == Material.COBBLESTONE) {
-                List<ItemStack> drops = BlockOps.breakAndCollect(gen);
+            // 流体相遇点可能落在生成点或其朝岩浆侧相邻格（取决于流速/更新顺序），
+            // 两处都探测，避免圆石卡在旁边无人采集导致仆从永久 IDLE
+            BlockFace towardLava = rotateLeft(facingOf(minion.facing())).getOppositeFace();
+            Block mid = gen.getRelative(towardLava);
+            Block target = gen.getType() == Material.COBBLESTONE ? gen
+                    : mid.getType() == Material.COBBLESTONE ? mid : null;
+            if (target != null) {
+                List<ItemStack> drops = BlockOps.breakAndCollect(target);
                 long xp = drops.stream().mapToLong(ItemStack::getAmount).sum();
                 return new WorkOutcome(true, xp, drops);
             }
@@ -95,8 +94,8 @@ public final class GeneratorStrategy implements MinionWorkStrategy {
         }
         water.setType(Material.WATER, false);
         lava.setType(Material.LAVA, false);
-        minion.addLayoutBlock(BlockLocation.of(water));
-        minion.addLayoutBlock(BlockLocation.of(lava));
+        minion.addLayoutBlock(BlockLocation.of(water), Material.AIR);
+        minion.addLayoutBlock(BlockLocation.of(lava), Material.AIR);
         return new WorkOutcome(true, 0, List.of());
     }
 
@@ -119,10 +118,5 @@ public final class GeneratorStrategy implements MinionWorkStrategy {
             case SOUTH -> BlockFace.EAST;
             default -> BlockFace.NORTH;
         };
-    }
-
-    @Override
-    public int cooldownTicks() {
-        return cfg.cooldownTicks();
     }
 }

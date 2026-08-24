@@ -1,7 +1,6 @@
 package com.hcs.minions.repository;
 
 import com.hcs.minions.config.DatabaseConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.repository.mysql.MysqlMinionStore;
 import com.hcs.minions.repository.sqlite.SqliteMinionStore;
 import com.hcs.minions.util.AsyncExecutor;
@@ -17,7 +16,7 @@ public final class RepositoryFactory {
     private RepositoryFactory() {
     }
 
-    public static MinionRepository create(DatabaseConfig cfg, AsyncExecutor async, PluginConfig pluginConfig, File dataFolder) {
+    public static MinionRepository create(DatabaseConfig cfg, AsyncExecutor async, File dataFolder) {
         MinionStore store;
         if (cfg.isSqlite()) {
             store = new SqliteMinionStore(new File(dataFolder, cfg.sqliteFile()));
@@ -25,6 +24,6 @@ public final class RepositoryFactory {
             store = new MysqlMinionStore(cfg);
         }
         store.init();
-        return new CachedMinionRepository(store, async, pluginConfig);
+        return new CachedMinionRepository(store, async);
     }
 }

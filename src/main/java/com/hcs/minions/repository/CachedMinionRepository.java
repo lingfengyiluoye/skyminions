@@ -1,16 +1,12 @@
 package com.hcs.minions.repository;
 
-import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionData;
-import com.hcs.minions.model.MinionType;
 import com.hcs.minions.util.AsyncExecutor;
 import com.hcs.minions.util.Logs;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -22,7 +18,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>并发模型：
  * <ul>
  *   <li>{@link #cache}：ConcurrentHashMap，O(1) 平均查找，业务层高频读取无锁。</li>
- *   <li>{@link #dirty}：ConcurrentHashMap.newKeySet，脏标记集合，驱动批量异步落库。</li>
+ *   <li>{@link #dirty}：ConcurrentHashMap.newKeySet，脏标记集合，驱动批量异步落库；
+ *       由 {@link Minion#markDirty()} 经钩子自动登记，运行期产出与 GUI 操作同链路持久化。</li>
+ *   <li>{@link #idLocks}：按 id 的条带锁，串行化同一仆从的 upsert/delete，
+ *       消除虚拟线程乱序导致的「已删除仆从被旧快照复活」竞态。</li>
  *   <li>所有阻塞 SQL 经由 {@link AsyncExecutor}（虚拟线程）执行，主线程零阻塞。</li>
  * </ul>
  */
@@ -30,79 +29,60 @@ public final class CachedMinionRepository implements MinionRepository {
 
     private final ConcurrentHashMap<UUID, Minion> cache = new ConcurrentHashMap<>();
     private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
+    /** 按 id 串行化数据库写操作（upsert vs delete 的顺序保证）。 */
+    private final ConcurrentHashMap<UUID, Object> idLocks = new ConcurrentHashMap<>();
 
     private final MinionStore store;
     private final AsyncExecutor async;
-    private final PluginConfig config;
 
-    public CachedMinionRepository(MinionStore store, AsyncExecutor async, PluginConfig config) {
+    public CachedMinionRepository(MinionStore store, AsyncExecutor async) {
         this.store = store;
         this.async = async;
-        this.config = config;
     }
 
     @Override
-    public CompletableFuture<Optional<Minion>> find(UUID id) {
-        Minion hit = cache.get(id);
-        if (hit != null) {
-            return CompletableFuture.completedFuture(Optional.of(hit));
-        }
-        // 缓存未命中：异步回源，命中的结果写入缓存
-        return async.submit(() -> store.select(id).map(this::toMinion))
-                .thenApply(opt -> {
-                    opt.ifPresent(m -> cache.putIfAbsent(m.id(), m));
-                    return opt;
-                });
+    public CompletableFuture<List<MinionData>> findAllData() {
+        return async.submit(store::selectAll);
     }
 
     @Override
-    public CompletableFuture<List<Minion>> findAll() {
-        if (!cache.isEmpty()) {
-            return CompletableFuture.completedFuture(new ArrayList<>(cache.values()));
-        }
-        return async.submit(store::selectAll).thenApply(rows -> {
-            List<Minion> out = new ArrayList<>(rows.size());
-            for (MinionData d : rows) {
-                Minion m = toMinion(d);
-                cache.put(m.id(), m);
-                out.add(m);
-            }
-            return out;
-        });
+    public void register(Minion minion) {
+        cache.put(minion.id(), minion);
+        // 挂接钩子：此后任何 markDirty() 都会自动进入脏集合（P0-2 修复的核心链路）
+        minion.setDirtyHook(() -> dirty.add(minion.id()));
     }
 
     @Override
     public CompletableFuture<Void> save(Minion minion) {
-        cache.put(minion.id(), minion);
+        register(minion);
         dirty.add(minion.id());
         minion.markDirty();
-        return CompletableFuture.completedFuture(null); // 实际写入由 flushDirty 批量异步执行
+        return CompletableFuture.completedFuture(null); // 实际写入由 flushSnapshots 批量异步执行
     }
 
     @Override
     public CompletableFuture<Void> delete(UUID id) {
-        cache.remove(id);
-        dirty.remove(id);
-        return async.run(() -> store.delete(id));
+        Object lock = lockFor(id);
+        synchronized (lock) {
+            cache.remove(id);
+            dirty.remove(id);
+            return async.run(() -> {
+                synchronized (lock) {
+                    try {
+                        store.delete(id);
+                    } finally {
+                        idLocks.remove(id, lock);
+                    }
+                }
+            });
+        }
     }
-
-    /**
-     * 脏数据落库（两阶段，线程安全）。
-     *
-     * <p>阶段一 {@link #collectDirtyIds()}：仅返回脏 ID 与认领状态，不触碰 Inventory，
-     * 可在任意线程调用。阶段二由 {@link MinionManager} 在每个仆从的 region 线程调用
-     * {@code minion.toData()} 生成快照（Inventory 访问必须 region 线程），随后把快照交给
-     * {@link #flushSnapshots} 异步落库。</p>
-     *
-     * <p>这样消除了"异步线程直接遍历 Bukkit Inventory"的竞态（数据丢失级）。</p>
-     */
 
     /** 收集需要落库的脏仆从 ID（任意线程安全，不访问 Inventory）。 */
     public List<UUID> collectDirtyIds() {
         List<UUID> out = new ArrayList<>();
         for (UUID id : List.copyOf(dirty)) {
-            Minion minion = cache.get(id);
-            if (minion == null) {
+            if (!cache.containsKey(id)) {
                 dirty.remove(id);
                 continue;
             }
@@ -138,59 +118,34 @@ public final class CachedMinionRepository implements MinionRepository {
         }
         for (MinionData snapshot : snapshots) {
             async.run(() -> {
-                // 快照生成后若仆从已被拾取/移除（delete 同步清 cache），丢弃该次 upsert，
-                // 否则虚拟线程无序执行下 upsert 可能跑在 delete 之后，导致仆从"复活"
-                if (!cache.containsKey(snapshot.id())) {
-                    return;
-                }
-                try {
-                    store.upsert(snapshot);
-                } catch (Exception e) {
-                    Logs.error("仆从落库失败，已重新置脏等待重试: " + snapshot.id(), e);
-                    Minion minion = cache.get(snapshot.id());
-                    if (minion != null) {
-                        minion.markDirty();
+                Object lock = lockFor(snapshot.id());
+                synchronized (lock) {
+                    try {
+                        // 快照生成后若仆从已被拾取/移除（delete 同步清 cache），丢弃该次 upsert；
+                        // 且与 delete 共享同一把 id 锁：两者必然全序执行，杜绝「先删后被旧快照覆盖」复活
+                        if (!cache.containsKey(snapshot.id())) {
+                            return;
+                        }
+                        store.upsert(snapshot);
+                    } catch (Exception e) {
+                        Logs.error("仆从落库失败，已重新置脏等待重试: " + snapshot.id(), e);
+                        Minion minion = cache.get(snapshot.id());
+                        if (minion != null) {
+                            minion.markDirty();
+                        }
+                        dirty.add(snapshot.id());
                     }
-                    dirty.add(snapshot.id());
                 }
             });
         }
-    }
-
-    @Override
-    public void flushDirty() {
-        // 兜底：当无 region 调度上下文时（理论上不应被直接调用），退化为收集+提示。
-        // 正常路径由 MinionManager 在 region 线程生成快照后调用 flushSnapshots。
-        Logs.warn("flushDirty() 被直接调用：请改用 MinionManager 的快照收集路径以保证 Inventory 线程安全");
-        List<MinionData> snapshots = new ArrayList<>();
-        for (UUID id : collectDirtyIds()) {
-            if (!claimDirty(id)) {
-                continue;
-            }
-            Minion minion = cache.get(id);
-            if (minion != null) {
-                snapshots.add(minion.toData());
-            }
-        }
-        flushSnapshots(snapshots);
-    }
-
-    private Minion toMinion(MinionData d) {
-        MinionType type = MinionType.fromKey(d.type()).orElse(MinionType.MINER);
-        MinionTypeConfig typeConfig = config.type(type);
-        Minion minion = Minion.fromData(d);
-        if (typeConfig != null) {
-            minion.refresh(typeConfig, config.upgradeRequirePreviousBody());
-        }
-        return minion;
     }
 
     /**
      * 主线程同步冲刷（onDisable 路径）。
      *
      * <p>必须在主线程（或能保证 Inventory 独占的 region 线程）调用——内部直接遍历
-     * Inventory 生成快照。{@link #close()} 前应先关闭所有打开的 Minion GUI，避免
-     * 冲刷期间玩家仍在交互导致读到中间态（修复 P0-3）。</p>
+     * Inventory 生成快照。调用前应先关闭所有打开的 Minion GUI，避免
+     * 冲刷期间玩家仍在交互导致读到中间态。</p>
      */
     @Override
     public void flushDirtySync() {
@@ -217,5 +172,9 @@ public final class CachedMinionRepository implements MinionRepository {
         // 关闭前同步冲刷脏数据，避免关闭连接池后异步写失败导致丢数据
         flushDirtySync();
         store.close();
+    }
+
+    private Object lockFor(UUID id) {
+        return idLocks.computeIfAbsent(id, k -> new Object());
     }
 }

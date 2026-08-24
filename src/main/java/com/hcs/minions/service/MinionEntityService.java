@@ -1,8 +1,9 @@
 package com.hcs.minions.service;
 
-import com.hcs.minions.config.PluginConfig;
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.model.Minion;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.util.Roman;
 import com.hcs.minions.util.Textures;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -36,11 +37,14 @@ public final class MinionEntityService {
 
     private final JavaPlugin plugin;
     private final NamespacedKey minionKey;
-    private final PluginConfig config;
-    /** 头顶告警状态缓存（仆从 id -> 是否处于停工告警），仅状态变化时才改写名牌。 */
-    private final Map<UUID, Boolean> statusWarnings = new ConcurrentHashMap<>();
+    private final ConfigProvider config;
+    /** 头顶状态徽标（排版即信息）：工作 ▶ 灰 · 满仓 ⚠ 黄+红字 · 闲置 ⏾ 深灰。 */
+    public enum PlateStatus { WORKING, HALTED, DORMANT }
 
-    public MinionEntityService(JavaPlugin plugin, PluginConfig config) {
+    /** 名牌状态缓存（仆从 id -> 当前徽标），仅状态变化时才改写名牌。 */
+    private final Map<UUID, PlateStatus> statusWarnings = new ConcurrentHashMap<>();
+
+    public MinionEntityService(JavaPlugin plugin, ConfigProvider config) {
         this.plugin = plugin;
         this.minionKey = new NamespacedKey(plugin, "minion");
         this.config = config;
@@ -67,9 +71,9 @@ public final class MinionEntityService {
             as.setCustomNameVisible(true);
             as.getPersistentDataContainer().set(minionKey, PersistentDataType.STRING, minion.id().toString());
             as.setHelmet(head(minion));
-            as.setChestplate(leather(Material.LEATHER_CHESTPLATE, color(minion.type())));
-            as.setLeggings(leather(Material.LEATHER_LEGGINGS, color(minion.type())));
-            as.setBoots(leather(Material.LEATHER_BOOTS, color(minion.type())));
+            as.setChestplate(leather(Material.LEATHER_CHESTPLATE, color(minion.type().behavior())));
+            as.setLeggings(leather(Material.LEATHER_LEGGINGS, color(minion.type().behavior())));
+            as.setBoots(leather(Material.LEATHER_BOOTS, color(minion.type().behavior())));
             as.getEquipment().setItemInMainHand(new ItemStack(minion.type().icon()));
             as.setRightArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
             for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -79,29 +83,34 @@ public final class MinionEntityService {
         minion.setStand(stand);
     }
 
-    /** 头顶状态提示（对齐 Hypixel）：停工告警时名牌追加红字，恢复后自动还原。
-     *  仅在状态变化时改写，需在仆从所在 region 线程调用。 */
-    public void refreshStatus(Minion minion, boolean warning) {
-        Boolean prev = statusWarnings.put(minion.id(), warning);
-        if (prev != null && prev == warning) {
+    /** 头顶状态提示（对齐 Hypixel 的状态可读性）：仅在状态变化时改写，需在仆从所在 region 线程调用。 */
+    public void refreshStatus(Minion minion, PlateStatus status) {
+        PlateStatus prev = statusWarnings.put(minion.id(), status);
+        if (prev == status) {
             return;
         }
         ArmorStand stand = minion.stand();
         if (stand == null || !stand.isValid()) {
             return;
         }
-        Component name = baseName(minion);
-        if (warning) {
-            name = name.append(Component.text(" ⚠仓库已满", NamedTextColor.RED));
-        }
+        Component base = baseName(minion);
+        Component name = switch (status) {
+            case WORKING -> Component.text("▶ ", NamedTextColor.GRAY).append(base);
+            case HALTED -> Component.text("⚠ ", NamedTextColor.YELLOW).append(base)
+                    .append(Component.text(" ⚠仓库已满", NamedTextColor.RED));
+            case DORMANT -> {
+                base = base.colorIfAbsent(NamedTextColor.DARK_GRAY);
+                yield Component.text("⏾ ", NamedTextColor.DARK_GRAY).append(base);
+            }
+        };
         stand.customName(name);
     }
 
-    /** 名牌基础部分：显示名（金）+ 等级（灰），spawn 与状态刷新共用。 */
+    /** 名牌基础部分：显示名（金）+ Tier 罗马数字（灰，对齐 Hypixel 名牌），spawn 与状态刷新共用。 */
     private Component baseName(Minion minion) {
         return Component.text()
-                .append(Component.text(config.type(minion.type()).displayName(), NamedTextColor.GOLD))
-                .append(Component.text(" 等级" + minion.level(), NamedTextColor.GRAY))
+                .append(Component.text(config.get().type(minion.type()).displayName(), NamedTextColor.GOLD))
+                .append(Component.text(" " + Roman.of(minion.level()), NamedTextColor.GRAY))
                 .build();
     }
 
@@ -112,9 +121,9 @@ public final class MinionEntityService {
             return;
         }
         stand.setHelmet(head(minion));
-        stand.setChestplate(leather(Material.LEATHER_CHESTPLATE, color(minion.type())));
-        stand.setLeggings(leather(Material.LEATHER_LEGGINGS, color(minion.type())));
-        stand.setBoots(leather(Material.LEATHER_BOOTS, color(minion.type())));
+        stand.setChestplate(leather(Material.LEATHER_CHESTPLATE, color(minion.type().behavior())));
+        stand.setLeggings(leather(Material.LEATHER_LEGGINGS, color(minion.type().behavior())));
+        stand.setBoots(leather(Material.LEATHER_BOOTS, color(minion.type().behavior())));
     }
 
     /** 工作手臂挥动动画（每次工作摆动一下，3 tick 后复位避免姿势残留抖动）。 */
@@ -169,7 +178,7 @@ public final class MinionEntityService {
         // 皮肤优先，其次全局默认贴图（base64 纹理，离线模式也可用）
         String texture = minion.skin().texture();
         if (texture == null || texture.isEmpty()) {
-            texture = config.headTexture();
+            texture = config.get().headTexture();
         }
         if (texture != null && !texture.isEmpty()) {
             // 现代 API：org.bukkit.profile.PlayerProfile + setOwnerProfile（旧 destroystokyo API 已弃用）
@@ -193,15 +202,15 @@ public final class MinionEntityService {
         return item;
     }
 
-    private Color color(MinionType type) {
-        return switch (type) {
-            case MINER -> Color.GRAY;
-            case FARMER -> Color.GREEN;
-            case LUMBERJACK -> Color.fromRGB(139, 69, 19);
-            case FISHER -> Color.AQUA;
-            case SLAYER -> Color.RED;
-            case RANCHER -> Color.fromRGB(255, 182, 193);
-            case COBBLE -> Color.fromRGB(120, 120, 120);
+    private Color color(MinionBehavior behavior) {
+        return switch (behavior) {
+            case MINING -> Color.GRAY;
+            case FARMING -> Color.GREEN;
+            case FORAGING -> Color.fromRGB(139, 69, 19);
+            case FISHING -> Color.AQUA;
+            case COMBAT -> Color.RED;
+            case RANCHING -> Color.fromRGB(255, 182, 193);
+            case GENERATOR -> Color.fromRGB(120, 120, 120);
         };
     }
 }

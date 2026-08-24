@@ -1,7 +1,7 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionCategory;
 import com.hcs.minions.model.MinionType;
@@ -13,6 +13,7 @@ import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.MaterialNames;
+import com.hcs.minions.util.Roman;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
@@ -71,12 +72,12 @@ public final class CollectionGui {
         return out;
     }
 
-    private final PluginConfig config;
+    private final ConfigProvider config;
     private final MinionManager manager;
     private final CollectionService collection;
     private final PermissionService permissions;
 
-    public CollectionGui(PluginConfig config, MinionManager manager,
+    public CollectionGui(ConfigProvider config, MinionManager manager,
                          CollectionService collection, PermissionService permissions) {
         this.config = config;
         this.manager = manager;
@@ -103,10 +104,10 @@ public final class CollectionGui {
         player.openInventory(inv);
     }
 
-    /** 当前过滤下的类型列表（保持枚举声明顺序）。 */
+    /** 当前过滤下的类型列表（保持注册顺序）。 */
     private List<MinionType> visibleTypes(MinionCategory filter) {
         List<MinionType> out = new ArrayList<>();
-        for (MinionType type : MinionType.values()) {
+        for (MinionType type : MinionType.all()) {
             if (filter == null || type.category() == filter) {
                 out.add(type);
             }
@@ -164,7 +165,7 @@ public final class CollectionGui {
 
     /** 已解锁卡片：图标 + 已解锁等级 + 已放置数 + 总产出 + 收集进度 + 下一级配方。 */
     private ItemStack cardItem(MinionType type, long[] stats, UUID owner) {
-        MinionTypeConfig cfg = config.type(type);
+        MinionTypeConfig cfg = config.get().type(type);
         if (cfg == null) {
             return named(GuiLayout.material("collection.locked.material"), Component.empty());
         }
@@ -173,8 +174,8 @@ public final class CollectionGui {
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
         v.put("category", type.category().displayName());
-        v.put("tier", maxLevel > 0 ? String.valueOf(maxLevel) : "-");
-        v.put("max_tier", String.valueOf(cfg.maxLevel()));
+        v.put("tier", maxLevel > 0 ? Roman.of(maxLevel) : "-");
+        v.put("max_tier", Roman.of(cfg.maxLevel()));
         v.put("placed", String.valueOf(stats[0]));
         v.put("produced", String.valueOf(stats[2]));
         v.put("collected", String.valueOf(collected));
@@ -188,9 +189,9 @@ public final class CollectionGui {
                 v.put("r" + row, "<dark_gray>· " + e.getKey().displayName() + " ×" + e.getValue());
                 row++;
             }
-            if (row <= 3 && UpgradeRules.needsPreviousBody(maxLevel, cfg.maxLevel(), config.upgradeRequirePreviousBody())) {
+            if (row <= 3 && UpgradeRules.needsPreviousBody(maxLevel, cfg.maxLevel(), config.get().upgradeRequirePreviousBody())) {
                 v.put("r" + row, "<dark_gray>· " + cfg.displayName()
-                        + " 等级 " + maxLevel + " ×1");
+                        + " 等级 " + Roman.of(maxLevel) + " ×1");
             }
         }
         return named(type.icon(), GuiText.title("collection-gui.card.title", v),
@@ -199,7 +200,7 @@ public final class CollectionGui {
 
     /** 未解锁卡片：??? + 收集进度（对齐文档的隐藏玩法）。 */
     private ItemStack lockedCard(MinionType type, UUID owner) {
-        MinionTypeConfig cfg = config.type(type);
+        MinionTypeConfig cfg = config.get().type(type);
         long collected = cfg == null ? 0 : collection.get(owner, cfg.product());
         long need = cfg == null ? 0 : cfg.unlockAmount();
         Map<String, String> v = new LinkedHashMap<>();
@@ -222,7 +223,7 @@ public final class CollectionGui {
         }
         Map<String, String> v = Map.of(
                 "unlocked", String.valueOf(unlockedCount(player)),
-                "total", String.valueOf(MinionType.values().length),
+                "total", String.valueOf(MinionType.all().size()),
                 "page", String.valueOf(page + 1),
                 "pages", String.valueOf(pages));
         inv.setItem(GuiLayout.slot("collection.progress.slot"),
@@ -253,7 +254,7 @@ public final class CollectionGui {
     /** 已解锁类型数（底行进度 x/y）。 */
     private int unlockedCount(Player player) {
         int n = 0;
-        for (MinionType type : MinionType.values()) {
+        for (MinionType type : MinionType.all()) {
             if (permissions.isUnlocked(player, type)) {
                 n++;
             }
@@ -263,7 +264,7 @@ public final class CollectionGui {
 
     /** 点击卡片后的聊天栏配方详情（下一级配方 + 本体要求）。 */
     public void sendRecipeDetails(Player player, MinionType type) {
-        MinionTypeConfig cfg = config.type(type);
+        MinionTypeConfig cfg = config.get().type(type);
         if (cfg == null) {
             return;
         }
@@ -277,15 +278,15 @@ public final class CollectionGui {
         }
         if (topLevel >= cfg.maxLevel()) {
             player.sendMessage(GuiText.title("collection-gui.recipe-max.title",
-                    Map.of("tier", String.valueOf(cfg.maxLevel()))));
+                    Map.of("tier", Roman.of(cfg.maxLevel()))));
             return;
         }
         for (Map.Entry<ItemRef, Long> e : cfg.recipeFor(topLevel).entrySet()) {
             player.sendMessage(Component.text("· " + e.getKey().displayName() + " ×" + e.getValue())
                     .decoration(TextDecoration.ITALIC, false));
         }
-        if (UpgradeRules.needsPreviousBody(topLevel, cfg.maxLevel(), config.upgradeRequirePreviousBody())) {
-            player.sendMessage(Component.text("· " + cfg.displayName() + " 等级 " + topLevel + " ×1")
+        if (UpgradeRules.needsPreviousBody(topLevel, cfg.maxLevel(), config.get().upgradeRequirePreviousBody())) {
+            player.sendMessage(Component.text("· " + cfg.displayName() + " 等级 " + Roman.of(topLevel) + " ×1")
                     .decoration(TextDecoration.ITALIC, false));
         }
     }

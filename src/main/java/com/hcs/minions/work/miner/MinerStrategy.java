@@ -1,7 +1,6 @@
 package com.hcs.minions.work.miner;
 
-import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.SimHarvest;
 import com.hcs.minions.work.WorkContext;
@@ -13,6 +12,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 矿工策略（模拟采集，不破坏方块）：统计工作范围内（5x5x3 立体）可采矿物的数量，
@@ -26,12 +26,6 @@ public final class MinerStrategy implements MinionWorkStrategy {
     /** 矿石方块 -> 产物映射（模拟采集不出原石形态的矿物产物）。 */
     private static final Map<Material, Material> PRODUCTS = buildProducts();
 
-    private final MinionTypeConfig cfg;
-
-    public MinerStrategy(MinionTypeConfig cfg) {
-        this.cfg = cfg;
-    }
-
     private static Map<Material, Material> buildProducts() {
         Map<Material, Material> m = new LinkedHashMap<>();
         m.put(Material.COAL_ORE, Material.COAL);
@@ -42,6 +36,14 @@ public final class MinerStrategy implements MinionWorkStrategy {
         m.put(Material.DEEPSLATE_COPPER_ORE, Material.RAW_COPPER);
         m.put(Material.GOLD_ORE, Material.RAW_GOLD);
         m.put(Material.DEEPSLATE_GOLD_ORE, Material.RAW_GOLD);
+        m.put(Material.REDSTONE_ORE, Material.REDSTONE);
+        m.put(Material.DEEPSLATE_REDSTONE_ORE, Material.REDSTONE);
+        m.put(Material.LAPIS_ORE, Material.LAPIS_LAZULI);
+        m.put(Material.DEEPSLATE_LAPIS_ORE, Material.LAPIS_LAZULI);
+        m.put(Material.EMERALD_ORE, Material.EMERALD);
+        m.put(Material.DEEPSLATE_EMERALD_ORE, Material.EMERALD);
+        m.put(Material.NETHER_QUARTZ_ORE, Material.QUARTZ);
+        m.put(Material.ANCIENT_DEBRIS, Material.NETHERITE_SCRAP);
         m.put(Material.DIAMOND_ORE, Material.DIAMOND);
         m.put(Material.DEEPSLATE_DIAMOND_ORE, Material.DIAMOND);
         m.put(Material.STONE, Material.COBBLESTONE);
@@ -50,8 +52,8 @@ public final class MinerStrategy implements MinionWorkStrategy {
     }
 
     @Override
-    public MinionType type() {
-        return MinionType.MINER;
+    public MinionBehavior behavior() {
+        return MinionBehavior.MINING;
     }
 
     @Override
@@ -62,6 +64,7 @@ public final class MinerStrategy implements MinionWorkStrategy {
     @Override
     public WorkOutcome performWork(WorkContext ctx) {
         // 统计范围内可采矿物（水平 5x5，纵向 ±1；纯内存读取，开销可忽略）
+        Set<Material> allowed = ctx.cfg().targetsAt(ctx.minion().level()); // 分级解锁：低 Tier 采不了高价值矿
         Map<Material, Integer> counts = new LinkedHashMap<>();
         Block anchor = ctx.anchor();
         int r = ctx.radius();
@@ -70,7 +73,7 @@ public final class MinerStrategy implements MinionWorkStrategy {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dz = -r; dz <= r; dz++) {
                     Material m = anchor.getRelative(dx, dy, dz).getType();
-                    if (cfg.targets().contains(m)) {
+                    if (allowed.contains(m)) {
                         counts.merge(m, 1, Integer::sum);
                         total++;
                     }
@@ -80,14 +83,9 @@ public final class MinerStrategy implements MinionWorkStrategy {
         if (total == 0) {
             return WorkOutcome.IDLE; // 范围内没有可采矿物 = 不工作（布局决定产量）
         }
-        int harvest = Math.min(total, cfg.harvestCap());
+        int harvest = Math.min(total, ctx.cfg().harvestCap());
         List<ItemStack> drops = SimHarvest.allocate(counts, harvest,
                 m -> PRODUCTS.getOrDefault(m, m));
         return new WorkOutcome(true, harvest, drops);
-    }
-
-    @Override
-    public int cooldownTicks() {
-        return cfg.cooldownTicks();
     }
 }

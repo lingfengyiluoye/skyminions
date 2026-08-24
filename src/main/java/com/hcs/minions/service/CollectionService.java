@@ -1,6 +1,7 @@
 package com.hcs.minions.service;
 
 import com.hcs.minions.config.CollectionConfig;
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
@@ -30,7 +31,8 @@ public final class CollectionService {
 
     private final JavaPlugin plugin;
     private final File file;
-    private final CollectionConfig cfg;
+    /** 经 ConfigProvider 读取，/minion reload 后里程碑阈值/奖励即时生效。 */
+    private final ConfigProvider config;
     private final EconomyService economy;
 
     /** 玩家 -> 资源 -> 累计量。 */
@@ -39,9 +41,9 @@ public final class CollectionService {
     /** 玩家 -> 资源 -> 已触发（已领奖）的最高里程碑序号（1-based，缺省视为 0）。 */
     private final ConcurrentHashMap<UUID, ConcurrentHashMap<String, Integer>> claimed = new ConcurrentHashMap<>();
 
-    public CollectionService(JavaPlugin plugin, CollectionConfig cfg, EconomyService economy) {
+    public CollectionService(JavaPlugin plugin, ConfigProvider config, EconomyService economy) {
         this.plugin = plugin;
-        this.cfg = cfg;
+        this.config = config;
         this.economy = economy;
         this.file = new File(plugin.getDataFolder(), "collection.yml");
     }
@@ -118,6 +120,11 @@ public final class CollectionService {
         }
     }
 
+    /** 当前生效的 Collection 配置快照（热重载安全）。 */
+    private CollectionConfig cfg() {
+        return config.get().collections();
+    }
+
     /**
      * 累计一次产出（内存合并，线程安全），并检测跨阈值触发里程碑。
      * 可在 region 线程调用：金币入账走 Vault 异步，消息用 Adventure（线程安全）。
@@ -128,13 +135,13 @@ public final class CollectionService {
         }
         ConcurrentHashMap<String, Long> map = collections.computeIfAbsent(owner, k -> new ConcurrentHashMap<>());
         long total = map.merge(material.name(), amount, Long::sum);
-        if (!cfg.enabled()) {
+        if (!cfg().enabled()) {
             return;
         }
         ConcurrentHashMap<String, Integer> cm = claimed.computeIfAbsent(owner, k -> new ConcurrentHashMap<>());
         // compute 原子保护：同一玩家同一资源的并发产出不会漏发/重发里程碑
         cm.compute(material.name(), (k, oldMax) -> {
-            int reached = cfg.reachedIndex(total);
+            int reached = cfg().reachedIndex(total);
             int old = oldMax == null ? 0 : oldMax;
             if (reached > old) {
                 award(owner, material, old + 1, reached);
@@ -148,16 +155,16 @@ public final class CollectionService {
     private void award(UUID owner, Material material, int from, int to) {
         Player online = Bukkit.getPlayer(owner);
         for (int n = from; n <= to; n++) {
-            long coins = cfg.coinsBase() * n;
+            long coins = cfg().coinsBase() * n;
             if (economy != null && economy.isEnabled() && coins > 0) {
                 economy.depositCents(owner, coins * 100);
             }
             if (online != null) {
                 online.sendMessage(Messages.milestoneReached(
-                        MaterialNames.of(material), cfg.thresholdOf(n), coins, cfg.slotMilestones().contains(n)));
+                        MaterialNames.of(material), cfg().thresholdOf(n), coins, cfg().slotMilestones().contains(n)));
             }
             Logs.info("Collection 里程碑: player={}, resource={}, milestone={}/{}",
-                    owner, material.name(), n, cfg.milestones().length);
+                    owner, material.name(), n, cfg().milestones().length);
         }
     }
 
@@ -191,7 +198,7 @@ public final class CollectionService {
 
     /** 下一里程碑阈值；全部达成返回 0。 */
     private long nextThreshold(long total) {
-        for (long m : cfg.milestones()) {
+        for (long m : cfg().milestones()) {
             if (total < m) {
                 return m;
             }
@@ -201,7 +208,7 @@ public final class CollectionService {
 
     /** 里程碑奖励的仆从槽位加成（多种资源可叠加，总量受 max-bonus-slots 硬上限钳制）。 */
     public int bonusSlots(UUID owner) {
-        if (!cfg.enabled()) {
+        if (!cfg().enabled()) {
             return 0;
         }
         ConcurrentHashMap<String, Integer> cm = claimed.get(owner);
@@ -210,9 +217,9 @@ public final class CollectionService {
         }
         long total = 0;
         for (int max : cm.values()) {
-            total += cfg.bonusSlotsFor(max);
+            total += cfg().bonusSlotsFor(max);
         }
-        return (int) Math.min(total, cfg.maxBonusSlots());
+        return (int) Math.min(total, cfg().maxBonusSlots());
     }
 
     /** 落盘 collection.yml。 */

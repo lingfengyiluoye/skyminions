@@ -13,11 +13,13 @@ import com.hcs.minions.util.Messages;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 管理命令：/minion give | upgrade | skin | reload | purge | list
@@ -43,11 +45,17 @@ public final class MinionCommand extends Command {
         this.plugin = plugin;
         setDescription("SkyMinions 管理命令");
         setPermission("hcs.minions.admin");
-        setUsage("/minion <give <type> [level] | upgrade <module> | skin | reload | purge | list>（图鉴/合成见 /minions）");
+        setUsage("/minion <give <type> [level] | upgrade <module> | skin | reload | purge | list | stats>（图鉴/合成见 /minions）");
     }
 
     @Override
     public boolean execute(@NotNull CommandSender sender, @NotNull String label, @NotNull String[] args) {
+        // 显式校验管理权限：不依赖框架对 setPermission 的处理（自定义 Command 子类
+        // 未经过 PluginCommand 的 testPermission 路径，必须自行把关）
+        if (!sender.hasPermission("hcs.minions.admin")) {
+            sender.sendMessage(Messages.NO_PERMISSION);
+            return true;
+        }
         if (args.length == 0) {
             sender.sendMessage(Messages.USAGE);
             return true;
@@ -59,6 +67,7 @@ public final class MinionCommand extends Command {
             case "reload" -> reload(sender);
             case "purge" -> purge(sender);
             case "list" -> sender.sendMessage(Messages.totalMinions(manager.all().size()));
+            case "stats" -> stats(sender);
             default -> sender.sendMessage(Messages.UNKNOWN_COMMAND);
         }
         return true;
@@ -87,7 +96,8 @@ public final class MinionCommand extends Command {
                 return;
             }
         }
-        player.getInventory().addItem(items.createItem(type, level));
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(items.createItem(type, level));
+        dropOverflow(player, overflow);
         player.sendMessage(Messages.givenMinion(type.key(), level));
     }
 
@@ -105,8 +115,16 @@ public final class MinionCommand extends Command {
             sender.sendMessage(Messages.unknownUpgrade(args[1]));
             return;
         }
-        player.getInventory().addItem(upgrades.createItem(type));
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(upgrades.createItem(type));
+        dropOverflow(player, overflow);
         player.sendMessage(Messages.givenUpgrade(type.displayName()));
+    }
+
+    /** 背包满时把放不下的部分掉落在脚下，绝不静默吞物品。 */
+    private static void dropOverflow(Player player, Map<Integer, ItemStack> overflow) {
+        for (ItemStack leftover : overflow.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+        }
     }
 
     private void listSkins(CommandSender sender) {
@@ -132,13 +150,25 @@ public final class MinionCommand extends Command {
         sender.sendMessage(Messages.purged(removed));
     }
 
+    /** 运行时统计：运行时长/调度周期/稀有掉落/全场累计产出。 */
+    private void stats(CommandSender sender) {
+        sender.sendMessage(Messages.statsHeader());
+        for (String line : manager.statsLines()) {
+            sender.sendMessage(Messages.statsLine(line));
+        }
+    }
+
     @Override
     public @NotNull List<String> tabComplete(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args) {
+        // 补全同样受管理权限保护，避免向无权限玩家泄露子命令结构
+        if (!sender.hasPermission("hcs.minions.admin")) {
+            return List.of();
+        }
         if (args.length == 1) {
-            return List.of("give", "upgrade", "skin", "reload", "purge", "list");
+            return List.of("give", "upgrade", "skin", "reload", "purge", "list", "stats");
         }
         if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
-            return Arrays.stream(MinionType.values()).map(MinionType::key).toList();
+            return MinionType.all().stream().map(MinionType::key).toList();
         }
         if (args.length == 2 && "upgrade".equalsIgnoreCase(args[0])) {
             return Arrays.stream(MinionUpgradeType.values()).map(MinionUpgradeType::key).toList();

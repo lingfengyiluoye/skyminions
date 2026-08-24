@@ -161,7 +161,7 @@ public final class GuiText {
         private static final String LINE = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬";
 
         static {
-            MAP.put("title", "仆从 · {name}");
+            MAP.put("title", "{name}");
             MAP.put("info.title", "<gold>✦ {name} · 等级 {tier}</gold>");
             MAP.put("info.lore", List.of(
                     "<gray>状态: {status}</gray>",
@@ -169,6 +169,7 @@ public final class GuiText {
                     "<dark_gray>速度 <green>{speed} 秒/次</green></dark_gray>",
                     "<dark_gray>产出 <green>≈ {rate} 件/小时</green></dark_gray>",
                     "<dark_gray>范围 <aqua>{range}</aqua></dark_gray>",
+                    "<dark_gray>{next_tier} 级解锁 <yellow>{unlock_mats}</yellow></dark_gray>",
                     "<dark_gray>存储 <white>{storage} 件 / {slots} 格</white></dark_gray>",
                     "<dark_gray>稀有掉落 <light_purple>{rare} ({rare_chance}%)</light_purple></dark_gray>",
                     "<dark_gray>取货或开启 <gold>自动售卖</gold> 后恢复工作{halted_tip}</dark_gray>",
@@ -192,6 +193,7 @@ public final class GuiText {
                     "{m1}",
                     "{m2}",
                     "{m3}",
+                    "{m4}",
                     "{body}",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<yellow>点击打开升级合成界面 ▶</yellow>"
@@ -203,6 +205,7 @@ public final class GuiText {
                     "{m1}",
                     "{m2}",
                     "{m3}",
+                    "{m4}",
                     "{body}",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<gray>点击打开升级合成界面（材料需放入合成格）</gray>"
@@ -218,6 +221,7 @@ public final class GuiText {
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<dark_gray>永久加速 <green>+{perm}%</green></dark_gray>",
                     "<dark_gray>限时剩余 <yellow>{left} 秒</yellow> <green>({timed}%)</green></dark_gray>",
+                    "<dark_gray>产出倍率 <light_purple>{mult}</light_purple></dark_gray>",
                     "<gray>{nofuel}当前无燃料（仆从仍会工作）</gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>",
@@ -278,12 +282,13 @@ public final class GuiText {
             MAP.put("layout.lore", List.of(
                     "<dark_gray>工作范围 <white>{side}x{side}</white></dark_gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
-                    "<green>{on}● 理想布局已开启（自动刷石中）</green>",
-                    "<gray>{off}○ 点击开启理想布局（自动摆水/岩浆）</gray>",
+                    "<green>{on}● 自动布局运行中</green>",
+                    "<gray>{off}○ 点击开启自动布局</gray>",
+                    "<dark_gray>{layout_hint}</dark_gray>",
+                    "<dark_gray>" + LINE + "</dark_gray>",
                     "<gray>· 中心留空放置仆从</gray>",
-                    "<gray>· 四周填充可采集方块</gray>",
-                    "<gray>· 保证光照防刷怪</gray>",
-                    "<dark_gray>· 多仆从共享边界可最大化产出</dark_gray>"
+                    "<gray>· 保证光照防刷怪促生长</gray>",
+                    "<dark_gray>· 关闭或拾取时自动还原摆放</dark_gray>"
             ));
             MAP.put("pickup.title", "<red>拾取仆从</red>");
             MAP.put("pickup.lore", List.of(
@@ -316,7 +321,7 @@ public final class GuiText {
                     "{r1}",
                     "{r2}",
                     "{r3}",
-                    "<yellow>点击查看配方详情 ▶</yellow>"
+                    "<yellow>点击打开升级合成界面 ▶</yellow>"
             ));
             MAP.put("collection-gui.locked.title", "<dark_gray>???</dark_gray>");
             MAP.put("collection-gui.locked.lore", List.of(
@@ -342,6 +347,7 @@ public final class GuiText {
             MAP.put("fuel-gui.option.title", "<yellow>{name}</yellow>");
             MAP.put("fuel-gui.option.lore", List.of(
                     "<dark_gray>加速 <green>+{boost}%</green></dark_gray>",
+                    "<dark_gray>产出 <light_purple>{mult}</light_purple></dark_gray>",
                     "<dark_gray>持续 <white>{duration}</white> / 个</dark_gray>",
                     "<dark_gray>背包数量 <yellow>{count}</yellow></dark_gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
@@ -364,6 +370,7 @@ public final class GuiText {
                     "{m1}",
                     "{m2}",
                     "{m3}",
+                    "{m4}",
                     "{body}",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<gray>把材料与本体放入左侧合成格</gray>",

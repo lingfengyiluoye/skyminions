@@ -92,11 +92,12 @@ public final class FuelGui {
         return counts;
     }
 
-    /** 燃料选项卡：物品 + 加速% + 持续时间 + 背包数量。 */
+    /** 燃料选项卡：物品 + 加速% + 产量倍率 + 持续时间 + 背包数量。 */
     private static ItemStack optionItem(Material material, FuelService.FuelValue fv, int count) {
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", MaterialNames.of(material));
         v.put("boost", String.valueOf((int) ((fv.boost() - 1) * 100)));
+        v.put("mult", fv.hasMultiplier() ? "×" + trimDouble(fv.multiplier()) : "-");
         v.put("duration", fv.permanent() ? "永久" : fmtDuration(fv.durationTicks()));
         v.put("count", String.valueOf(count));
         ItemStack item = new ItemStack(material);
@@ -139,6 +140,11 @@ public final class FuelGui {
             return (seconds / 60) + " 分钟";
         }
         return seconds + " 秒";
+    }
+
+    /** 倍率展示：整数不带小数点，其余保留一位。 */
+    private static String trimDouble(double d) {
+        return d == Math.floor(d) ? String.valueOf((long) d) : String.valueOf(d);
     }
 
     private static ItemStack named(Material material, Component name) {

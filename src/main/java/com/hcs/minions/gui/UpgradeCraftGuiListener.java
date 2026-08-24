@@ -1,7 +1,7 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.event.MinionLevelUpEvent;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.MinionItemService;
@@ -27,11 +27,11 @@ public final class UpgradeCraftGuiListener implements Listener {
     private final JavaPlugin plugin;
     private final MinionManager manager;
     private final MinionItemService items;
-    private final PluginConfig config;
+    private final ConfigProvider config;
     private final SkyblockHook skyblock;
 
     public UpgradeCraftGuiListener(JavaPlugin plugin, MinionManager manager, MinionItemService items,
-                                   PluginConfig config, SkyblockHook skyblock) {
+                                   ConfigProvider config, SkyblockHook skyblock) {
         this.plugin = plugin;
         this.manager = manager;
         this.items = items;
@@ -77,7 +77,7 @@ public final class UpgradeCraftGuiListener implements Listener {
         }
         if (slot == UpgradeCraftGui.infoSlot() && event.isShiftClick()) {
             UpgradeCraftGui.fillFromInventory(inv, player, minion, items,
-                    config.type(minion.type()), config);
+                    config.get().type(minion.type()), config);
             UpgradeCraftGui.refresh(inv, minion, items, config);
             return;
         }
@@ -123,7 +123,7 @@ public final class UpgradeCraftGuiListener implements Listener {
 
     /** 点击结果槽：材料精确齐备才合成（清空合成格 → 原地升级 → 返回仆从界面）。 */
     private void handleCraft(Player player, Inventory inv, Minion minion) {
-        MinionTypeConfig cfg = config.type(minion.type());
+        MinionTypeConfig cfg = config.get().type(minion.type());
         if (minion.level() >= cfg.maxLevel()) {
             player.sendMessage(Messages.MAX_LEVEL);
             player.closeInventory();
@@ -137,13 +137,13 @@ public final class UpgradeCraftGuiListener implements Listener {
         UpgradeCraftGui.clearGrid(inv);
         minion.upgrade(cfg);
         Bukkit.getPluginManager().callEvent(new MinionLevelUpEvent(minion, minion.level()));
-        minion.refresh(cfg, config.upgradeRequirePreviousBody());
+        minion.refresh(cfg, config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.upgradeSuccess(minion.level()));
         // 点击事件中直接开新界面可能不被客户端接受：先关闭，下一 tick 重开仆从界面
-        // （onClose 时合成格已清空，不会误归还）
+        // （onClose 时合成格已清空，不会误归还）。使用 RegionScheduler 保持 Folia 兼容
         player.closeInventory();
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        Bukkit.getRegionScheduler().run(plugin, player.getLocation(), ignored -> {
             if (player.isOnline() && manager.minion(minion.id()) != null) {
                 manager.openGui(player, minion);
             }
@@ -171,9 +171,20 @@ public final class UpgradeCraftGuiListener implements Listener {
         return sb.toString();
     }
 
-    /** 格子内容变化在点击事件之后生效，延迟 1 tick 刷新信息卡与结果槽。 */
+    /** 格子内容变化在点击事件之后生效，延迟 1 tick 刷新信息卡与结果槽（RegionScheduler，Folia 兼容）。 */
     private void scheduleRefresh(Inventory inv, Minion minion) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        // 以查看者所在 region 调度：Inventory 归属其打开的界面
+        org.bukkit.entity.Player viewer = null;
+        for (org.bukkit.entity.HumanEntity h : inv.getViewers()) {
+            if (h instanceof org.bukkit.entity.Player p) {
+                viewer = p;
+                break;
+            }
+        }
+        if (viewer == null) {
+            return; // 界面已无人观看，无需刷新
+        }
+        Bukkit.getRegionScheduler().run(plugin, viewer.getLocation(), ignored -> {
             if (inv.getHolder() instanceof UpgradeCraftGui.CraftHolder) {
                 UpgradeCraftGui.refresh(inv, minion, items, config);
             }

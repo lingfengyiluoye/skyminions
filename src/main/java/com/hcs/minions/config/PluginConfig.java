@@ -35,6 +35,7 @@ public record PluginConfig(
         boolean debug,
         Map<String, MinionTypeConfig> types,
         CollectionConfig collections,
+        OfflineProductionConfig offlineProduction,
         boolean upgradeRequirePreviousBody,
         boolean collectionUnlockEnabled,
         double playerScanRadius,

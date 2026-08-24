@@ -58,9 +58,15 @@ public final class CraftEngineHook {
             }
             return (ItemStack) BUILD_STACK.invoke(definition);
         } catch (Throwable t) {
+            // 反射失败必须留痕（项目规约：严禁静默吞异常）；每个 id 只告警一次防刷屏
+            if (WARNED.add(id)) {
+                Logs.warn("CraftEngine 物品 {} 构建失败（未注册或版本不兼容），已按缺失处理", id, t);
+            }
             return null;
         }
     }
+
+    private static final java.util.Set<String> WARNED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** 若 stack 是 CraftEngine 自定义物品返回其 id（namespace:path），否则返回 null。 */
     public static String customItemId(ItemStack stack) {

@@ -1,13 +1,14 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.upgrade.UpgradeRules;
 import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.Roman;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
@@ -80,11 +81,11 @@ public final class UpgradeCraftGui {
     }
 
     /** 打开合成界面：绘制装饰/箭头/信息卡，结果槽初始为「材料未集齐」占位。 */
-    public static void open(Player player, Minion minion, MinionItemService items, PluginConfig config) {
-        MinionTypeConfig cfg = config.type(minion.type());
+    public static void open(Player player, Minion minion, MinionItemService items, ConfigProvider config) {
+        MinionTypeConfig cfg = config.get().type(minion.type());
         Map<String, String> v = Map.of(
                 "name", cfg.displayName(),
-                "tier", String.valueOf(minion.level()));
+                "tier", Roman.of(minion.level()));
         Inventory inv = Bukkit.createInventory(new CraftHolder(minion.id()), 54,
                 GuiText.title("craft-gui.title", v));
         ItemStack decor = named(GuiLayout.material("craft.decor.material"), Component.empty());
@@ -101,8 +102,8 @@ public final class UpgradeCraftGui {
     }
 
     /** 按当前合成格内容刷新信息卡与结果槽（每次格子变化后调用）。 */
-    public static void refresh(Inventory inv, Minion minion, MinionItemService items, PluginConfig config) {
-        MinionTypeConfig cfg = config.type(minion.type());
+    public static void refresh(Inventory inv, Minion minion, MinionItemService items, ConfigProvider config) {
+        MinionTypeConfig cfg = config.get().type(minion.type());
         inv.setItem(infoSlot(), infoItem(inv, minion, items, cfg, config));
         CraftCheck check = validate(inv, minion, items, cfg, config);
         inv.setItem(resultSlot(), check.complete()
@@ -112,10 +113,10 @@ public final class UpgradeCraftGui {
 
     /** 校验合成格内容是否精确匹配升级配方（含本体）。 */
     public static CraftCheck validate(Inventory inv, Minion minion, MinionItemService items,
-                                      MinionTypeConfig cfg, PluginConfig config) {
+                                      MinionTypeConfig cfg, ConfigProvider config) {
         Map<ItemRef, Long> recipe = cfg.recipeFor(minion.level());
         boolean needBody = UpgradeRules.needsPreviousBody(
-                minion.level(), cfg.maxLevel(), config.upgradeRequirePreviousBody());
+                minion.level(), cfg.maxLevel(), config.get().upgradeRequirePreviousBody());
         Map<ItemRef, Long> remaining = new LinkedHashMap<>(recipe);
         int bodyCount = 0;
         boolean junk = false;
@@ -144,6 +145,8 @@ public final class UpgradeCraftGui {
         boolean missingMaterial = remaining.values().stream().anyMatch(v -> v > 0);
         boolean excessMaterial = remaining.values().stream().anyMatch(v -> v < 0);
         boolean bodyOk = needBody ? bodyCount == 1 : bodyCount == 0;
+        // 本体多放/不该放也视为「多余物品」，让失败提示准确（而非误报缺材料）
+        boolean bodyExcess = needBody ? bodyCount > 1 : bodyCount > 0;
         boolean complete = !junk && !missingMaterial && !excessMaterial && bodyOk;
         Map<ItemRef, Long> missing = new LinkedHashMap<>();
         for (Map.Entry<ItemRef, Long> e : remaining.entrySet()) {
@@ -151,7 +154,8 @@ public final class UpgradeCraftGui {
                 missing.put(e.getKey(), e.getValue());
             }
         }
-        return new CraftCheck(complete, missing, needBody && bodyCount < 1, junk || excessMaterial);
+        return new CraftCheck(complete, missing, needBody && bodyCount < 1,
+                junk || excessMaterial || bodyExcess);
     }
 
     /** 匹配「当前等级的同类型仆从生成物」（合成升级的上一级本体）。 */
@@ -165,10 +169,10 @@ public final class UpgradeCraftGui {
 
     /** 一键填充：从玩家背包装入配方材料（与本体），先归还格内已有物品再填入。 */
     public static void fillFromInventory(Inventory inv, Player player, Minion minion,
-                                         MinionItemService items, MinionTypeConfig cfg, PluginConfig config) {
+                                         MinionItemService items, MinionTypeConfig cfg, ConfigProvider config) {
         Map<ItemRef, Long> recipe = cfg.recipeFor(minion.level());
         boolean needBody = UpgradeRules.needsPreviousBody(
-                minion.level(), cfg.maxLevel(), config.upgradeRequirePreviousBody());
+                minion.level(), cfg.maxLevel(), config.get().upgradeRequirePreviousBody());
         // 归还格内已有物品，避免与背包重复计数
         for (int slot : gridSlots()) {
             ItemStack item = inv.getItem(slot);
@@ -240,10 +244,10 @@ public final class UpgradeCraftGui {
 
     /** 配方信息卡：逐材料展示 需求/已放，本体行可选（随全局开关）。 */
     private static ItemStack infoItem(Inventory inv, Minion minion, MinionItemService items,
-                                      MinionTypeConfig cfg, PluginConfig config) {
+                                      MinionTypeConfig cfg, ConfigProvider config) {
         Map<ItemRef, Long> recipe = cfg.recipeFor(minion.level());
         boolean needBody = UpgradeRules.needsPreviousBody(
-                minion.level(), cfg.maxLevel(), config.upgradeRequirePreviousBody());
+                minion.level(), cfg.maxLevel(), config.get().upgradeRequirePreviousBody());
         Map<ItemRef, Long> placed = new LinkedHashMap<>();
         int bodyPlaced = 0;
         for (int slot : gridSlots()) {
@@ -263,12 +267,12 @@ public final class UpgradeCraftGui {
             }
         }
         Map<String, String> v = new LinkedHashMap<>();
-        v.put("tier", String.valueOf(minion.level()));
-        v.put("next", String.valueOf(minion.level() + 1));
+        v.put("tier", Roman.of(minion.level()));
+        v.put("next", Roman.of(minion.level() + 1));
         int row = 1;
         for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
-            if (row > 3) {
-                break; // 信息卡最多展示 3 行材料
+            if (row > 4) {
+                break; // 信息卡最多展示 4 行材料
             }
             v.put("m" + row, recipeLine(e.getKey(), e.getValue(), placed.getOrDefault(e.getKey(), 0L)));
             row++;

@@ -14,17 +14,34 @@ import java.util.Map;
  */
 public final class FuelService {
 
-    /** 燃料属性：持续 tick（永久燃料为 0，表示不衰减）+ 速度加成（1.0=无加成，1.5=快 50%）。 */
-    public record FuelValue(long durationTicks, double boost, boolean permanent) {
+    /**
+     * 燃料属性（双轴制，对齐 Hypixel 的速度燃料与催化剂类产量倍率）：
+     *
+     * @param durationTicks 持续 tick（永久燃料为 0，不衰减）
+     * @param boost         速度加成（1.0=无加成，1.5=快 50%）
+     * @param permanent     是否永久（不随时间衰减）
+     * @param multiplier    产量倍率（催化剂轴；1.0=无。产出数量 ×multiplier）
+     */
+    public record FuelValue(long durationTicks, double boost, boolean permanent, double multiplier) {
 
-        /** 普通限时燃料。 */
+        /** 普通限时速度燃料。 */
         public static FuelValue timed(long durationTicks, double boost) {
-            return new FuelValue(durationTicks, boost, false);
+            return new FuelValue(durationTicks, boost, false, 1.0);
         }
 
         /** 永久燃料（不随时间衰减）。 */
         public static FuelValue permanent(double boost) {
-            return new FuelValue(0L, boost, true);
+            return new FuelValue(0L, boost, true, 1.0);
+        }
+
+        /** 催化剂类限时产量倍率燃料（不加速度）。 */
+        public static FuelValue catalyst(long durationTicks, double multiplier) {
+            return new FuelValue(durationTicks, 1.0, false, multiplier);
+        }
+
+        /** 是否带产量倍率。 */
+        public boolean hasMultiplier() {
+            return multiplier > 1.0;
         }
     }
 
@@ -44,6 +61,10 @@ public final class FuelService {
         values.put(Material.MAGMA_CREAM, FuelValue.permanent(1.30));
         values.put(Material.GLOWSTONE_DUST, FuelValue.permanent(1.35));
         values.put(Material.DAYLIGHT_DETECTOR, FuelValue.permanent(1.25));
+        // 催化剂类（产量倍率轴，对齐 Hypixel Catalyst 思路：数量翻倍而非速度）
+        values.put(Material.AMETHYST_SHARD, FuelValue.catalyst(36000L, 1.5));   // ×1.5 / 30 分钟
+        values.put(Material.BLAZE_POWDER, FuelValue.catalyst(18000L, 2.0));     // ×2.0 / 15 分钟
+        values.put(Material.PHANTOM_MEMBRANE, FuelValue.catalyst(9600L, 3.0));  // ×3.0 / 8 分钟
         return Collections.unmodifiableMap(values);
     }
 

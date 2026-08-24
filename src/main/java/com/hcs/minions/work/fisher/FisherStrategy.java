@@ -1,7 +1,7 @@
 package com.hcs.minions.work.fisher;
 
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -9,7 +9,10 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 /**
  * 钓鱼策略：附近有水即工作，模拟钓鱼产出鱼类（不破坏方块）。
@@ -20,15 +23,9 @@ public final class FisherStrategy implements MinionWorkStrategy {
             Material.COD, Material.SALMON, Material.TROPICAL_FISH, Material.PUFFERFISH
     );
 
-    private final MinionTypeConfig cfg;
-
-    public FisherStrategy(MinionTypeConfig cfg) {
-        this.cfg = cfg;
-    }
-
     @Override
-    public MinionType type() {
-        return MinionType.FISHER;
+    public MinionBehavior behavior() {
+        return MinionBehavior.FISHING;
     }
 
     @Override
@@ -56,8 +53,19 @@ public final class FisherStrategy implements MinionWorkStrategy {
         return new WorkOutcome(true, n, List.of(new ItemStack(fish, n)));
     }
 
+    /** 离线结算：按在线同款概率聚合鱼获，受仓储空位天花板钳制。 */
     @Override
-    public int cooldownTicks() {
-        return cfg.cooldownTicks();
+    public List<ItemStack> offlineYield(MinionTypeConfig cfg, int actions, Random rnd, long maxUnits) {
+        Map<Material, Integer> agg = new EnumMap<>(Material.class);
+        long units = 0;
+        for (int i = 0; i < actions && units < maxUnits; i++) {
+            int n = 1 + (rnd.nextInt(4) == 0 ? 1 : 0);
+            Material fish = FISH.get(rnd.nextInt(FISH.size()));
+            for (int k = 0; k < n && units < maxUnits; k++) {
+                agg.merge(fish, 1, Integer::sum);
+                units++;
+            }
+        }
+        return MinionWorkStrategy.mergeToStacks(agg);
     }
 }

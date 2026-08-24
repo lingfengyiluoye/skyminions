@@ -36,24 +36,58 @@ permissions:
   hcs.minions.use:
     description: 使用仆从
     default: true
-  hcs.minions.type.miner:
+  hcs.minions.type.煤矿仆从:
     description: 使用矿工仆从
     default: true
-  hcs.minions.type.farmer:
+  hcs.minions.type.小麦仆从:
     description: 使用农夫仆从
     default: true
-  hcs.minions.type.lumberjack:
+  hcs.minions.type.橡木仆从:
     description: 使用伐木工仆从
     default: true
-  hcs.minions.type.fisher:
+  hcs.minions.type.钓鱼仆从:
     description: 使用钓鱼仆从
     default: true
-  hcs.minions.type.slayer:
+  hcs.minions.type.僵尸仆从:
     description: 使用猎魔仆从
     default: true
-  hcs.minions.type.rancher:
+  hcs.minions.type.牛仆从:
     description: 使用牧民仆从
     default: true
-  hcs.minions.type.cobble:
+  hcs.minions.type.圆石仆从:
     description: 使用圆石仆从
     default: true
+  # ---- 扩展类型（配置驱动，一种资源一个仆从；默认全员可用，可用 LuckPerms 收紧） ----
+  hcs.minions.type.铁矿仆从: {description: 铁矿仆从, default: true}
+  hcs.minions.type.铜矿仆从: {description: 铜矿仆从, default: true}
+  hcs.minions.type.金矿仆从: {description: 金矿仆从, default: true}
+  hcs.minions.type.红石仆从: {description: 红石仆从, default: true}
+  hcs.minions.type.青金石仆从: {description: 青金仆从, default: true}
+  hcs.minions.type.钻石仆从: {description: 钻石仆从, default: true}
+  hcs.minions.type.绿宝石仆从: {description: 绿宝仆从, default: true}
+  hcs.minions.type.石英仆从: {description: 石英仆从, default: true}
+  hcs.minions.type.黑曜石仆从: {description: 黑曜仆从, default: true}
+  hcs.minions.type.胡萝卜仆从: {description: 胡萝卜仆从, default: true}
+  hcs.minions.type.马铃薯仆从: {description: 马铃薯仆从, default: true}
+  hcs.minions.type.南瓜仆从: {description: 南瓜仆从, default: true}
+  hcs.minions.type.西瓜仆从: {description: 西瓜仆从, default: true}
+  hcs.minions.type.甜菜仆从: {description: 甜菜仆从, default: true}
+  hcs.minions.type.可可仆从: {description: 可可仆从, default: true}
+  hcs.minions.type.下界疣仆从: {description: 下界疣仆从, default: true}
+  hcs.minions.type.白桦仆从: {description: 白桦仆从, default: true}
+  hcs.minions.type.云杉仆从: {description: 云杉仆从, default: true}
+  hcs.minions.type.丛林仆从: {description: 丛林仆从, default: true}
+  hcs.minions.type.金合欢仆从: {description: 金合欢仆从, default: true}
+  hcs.minions.type.深色橡木仆从: {description: 深色橡木仆从, default: true}
+  hcs.minions.type.樱花仆从: {description: 樱花仆从, default: true}
+  hcs.minions.type.红树仆从: {description: 红树仆从, default: true}
+  hcs.minions.type.骷髅仆从: {description: 骷髅猎人, default: true}
+  hcs.minions.type.苦力怕仆从: {description: 苦力怕猎人, default: true}
+  hcs.minions.type.蜘蛛仆从: {description: 蛛网猎人, default: true}
+  hcs.minions.type.末影人仆从: {description: 末影猎人, default: true}
+  hcs.minions.type.烈焰人仆从: {description: 烈焰猎人, default: true}
+  hcs.minions.type.史莱姆仆从: {description: 史莱姆猎人, default: true}
+  hcs.minions.type.羊仆从: {description: 绵羊仆从, default: true}
+  hcs.minions.type.鸡仆从: {description: 蛋鸡仆从, default: true}
+  hcs.minions.type.猪仆从: {description: 生猪仆从, default: true}
+  hcs.minions.type.兔仆从: {description: 兔子仆从, default: true}

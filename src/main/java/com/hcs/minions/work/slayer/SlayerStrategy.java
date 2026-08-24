@@ -1,7 +1,7 @@
 package com.hcs.minions.work.slayer;
 
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.model.MinionType;
+import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -46,15 +46,16 @@ public final class SlayerStrategy implements MinionWorkStrategy {
             SUGAR, REDSTONE, GLOWSTONE_DUST, GUNPOWDER, SPIDER_EYE, STICK, BLAZE_POWDER
     };
 
-    private final MinionTypeConfig cfg;
-
-    public SlayerStrategy(MinionTypeConfig cfg) {
-        this.cfg = cfg;
+    /** Boss 级生物：仆从不攻击（防 damage(9999) 白嫖 Boss 击杀/成就联动）。 */
+    private static boolean isBoss(org.bukkit.entity.Entity e) {
+        return e instanceof org.bukkit.entity.Wither
+                || e instanceof org.bukkit.entity.Warden
+                || e instanceof org.bukkit.entity.ElderGuardian;
     }
 
     @Override
-    public MinionType type() {
-        return MinionType.SLAYER;
+    public MinionBehavior behavior() {
+        return MinionBehavior.COMBAT;
     }
 
     @Override
@@ -127,18 +128,20 @@ public final class SlayerStrategy implements MinionWorkStrategy {
 
     /**
      * 在工作范围内寻找最近的敌对生物（与方块搜索同样的半径语义）。
+     * 类型配置了 preferred-targets 时优先在其中锁定（两轮扫描：先定向后通用）。
      * Monster 覆盖全部原版敌对怪；Slime/Phantom 不是 Monster 子类，单独补上。
      */
     private Entity findHostile(WorkContext ctx) {
         Location center = ctx.anchor().getLocation().add(0.5, 0.5, 0.5);
         double r = ctx.radius() + 0.5;
         Entity nearest = null;
+        Entity preferred = null;
         double best = Double.MAX_VALUE;
         for (Entity e : ctx.world().getNearbyEntities(center, r, r + 1, r)) {
             if (!(e instanceof Monster) && !(e instanceof Slime) && !(e instanceof Phantom)) {
                 continue;
             }
-            if (e.isDead() || !e.isValid()) {
+            if (isBoss(e) || e.isDead() || !e.isValid()) {
                 continue;
             }
             double d = e.getLocation().distanceSquared(center);
@@ -146,12 +149,26 @@ public final class SlayerStrategy implements MinionWorkStrategy {
                 best = d;
                 nearest = e;
             }
+            if (preferred == null && ctx.cfg().isPreferred(e.getType())) {
+                preferred = e; // 定向目标取第一只命中即可（范围小，距离差异可忽略）
+            }
         }
-        return nearest;
+        return preferred != null ? preferred : nearest;
     }
 
+    /** 离线结算：范围内无实体怪，走通用模拟掉落池聚合（与在线回退口径一致）。 */
     @Override
-    public int cooldownTicks() {
-        return cfg.cooldownTicks();
+    public List<ItemStack> offlineYield(MinionTypeConfig cfg, int actions, java.util.Random rnd, long maxUnits) {
+        java.util.Map<Material, Integer> agg = new java.util.EnumMap<>(Material.class);
+        long units = 0;
+        for (int i = 0; i < actions && units < maxUnits; i++) {
+            int n = 1 + rnd.nextInt(2);
+            Material drop = GENERIC_DROPS.get(rnd.nextInt(GENERIC_DROPS.size()));
+            for (int k = 0; k < n && units < maxUnits; k++) {
+                agg.merge(drop, 1, Integer::sum);
+                units++;
+            }
+        }
+        return MinionWorkStrategy.mergeToStacks(agg);
     }
 }

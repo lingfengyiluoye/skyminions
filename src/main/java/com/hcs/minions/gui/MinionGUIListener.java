@@ -1,7 +1,7 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
@@ -38,12 +38,12 @@ public final class MinionGUIListener implements Listener {
     private final MinionManager manager;
     private final MinionItemService items;
     private final MinionEntityService entities;
-    private final PluginConfig config;
+    private final ConfigProvider config;
     private final UpgradeService upgrades;
     private final SkyblockHook skyblock;
 
     public MinionGUIListener(MinionManager manager, MinionItemService items, MinionEntityService entities,
-                             PluginConfig config, UpgradeService upgrades, SkyblockHook skyblock) {
+                             ConfigProvider config, UpgradeService upgrades, SkyblockHook skyblock) {
         this.manager = manager;
         this.items = items;
         this.entities = entities;
@@ -82,7 +82,8 @@ public final class MinionGUIListener implements Listener {
         if (slot == Minion.autosellSlot()) {
             event.setCancelled(true);
             minion.setAutoSell(!minion.autoSell());
-            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+            manager.save(minion); // 立即登记落库，不依赖 onClose 兜底
             player.sendMessage(Messages.autoSellToggled(minion.autoSell()));
             return;
         }
@@ -201,18 +202,31 @@ public final class MinionGUIListener implements Listener {
             }
             return;
         }
+        boolean bucketFuel = cursor.getType() == Material.LAVA_BUCKET;
         if (fv.permanent()) {
             minion.addPermanentFuel(fv.boost());
             cursor.setAmount(cursor.getAmount() - 1);
             event.setCursor(cursor.getAmount() > 0 ? cursor : null);
             player.sendMessage(Messages.permanentFuelEquipped((int) ((fv.boost() - 1) * 100)));
+        } else if (fv.hasMultiplier()) {
+            // 催化剂轴：整组安装时长，仅更强倍率才会被消耗
+            int amount = cursor.getAmount();
+            if (!minion.addMultiplier(fv.multiplier(), fv.durationTicks() * amount)) {
+                player.sendMessage(Messages.multFuelWeak(minion.prodMultiplier()));
+                return;
+            }
+            event.setCursor(null);
+            player.sendMessage(Messages.multFuelEquipped(fv.multiplier(), fv.durationTicks() * amount / 20L));
         } else {
             int amount = cursor.getAmount();
             event.setCursor(null);
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
             player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
         }
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        if (bucketFuel) {
+            giveOrDrop(player, new ItemStack(Material.BUCKET, 1)); // 桶装燃料返还空桶
+        }
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
     }
 
@@ -224,7 +238,7 @@ public final class MinionGUIListener implements Listener {
         }
         minion.setFuelTicks(0);
         minion.setFuelBoost(1.0);
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.fuelUnequipped());
     }
@@ -285,7 +299,8 @@ public final class MinionGUIListener implements Listener {
             if (cursor.getAmount() <= 0) {
                 event.setCursor(null);
             }
-            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+            manager.save(minion); // 装备模块立即登记落库
             player.sendMessage(Messages.upgradeEquipped(type.displayName()));
             return;
         }
@@ -293,7 +308,8 @@ public final class MinionGUIListener implements Listener {
         MinionUpgradeType removed = minion.removeUpgradeSlot(slotNum);
         if (removed != null) {
             giveOrDrop(player, upgrades.createItem(removed));
-            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+            manager.save(minion); // 卸下模块立即登记落库
             player.sendMessage(Messages.upgradeRemoved(removed.displayName()));
         } else {
             player.sendMessage(Messages.UPGRADE_SLOT_EMPTY);
@@ -307,21 +323,23 @@ public final class MinionGUIListener implements Listener {
         minion.setSkin(skins[next]);
         // 刷新盔甲架外观（头盔贴图随皮肤变化），而非只改内存字段
         entities.refreshAppearance(minion);
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.skinChanged(minion.skin().displayName()));
     }
 
-    /** 理想布局：圆石仆从为可执行开关（自动摆水/岩浆，见 GeneratorStrategy）；其余类型展示布局指引。 */
+    /** 理想布局：圆石/农夫为可执行开关（自动摆方块，见各自策略）；其余类型展示布局指引。 */
     private void showLayout(Player player, Minion minion) {
-        MinionTypeConfig cfg = config.type(minion.type());
-        if (minion.type() == MinionType.COBBLE) {
+        MinionTypeConfig cfg = config.get().type(minion.type());
+        var behavior = minion.type().behavior();
+        if (behavior == com.hcs.minions.model.MinionBehavior.GENERATOR
+                || behavior == com.hcs.minions.model.MinionBehavior.FARMING) {
             boolean on = !minion.idealLayout();
             if (!on) {
-                minion.cleanupLayoutBlocks(); // 关闭时还原摆放的水/岩浆
+                minion.cleanupLayoutBlocks(); // 关闭时还原摆放的水/岩浆/耕地作物
             }
             minion.setIdealLayout(on);
-            minion.refresh(cfg, config.upgradeRequirePreviousBody());
+            minion.refresh(cfg, config.get().upgradeRequirePreviousBody());
             manager.save(minion);
             player.sendMessage(on ? Messages.layoutEnabled() : Messages.layoutDisabled());
             return;
@@ -337,7 +355,7 @@ public final class MinionGUIListener implements Listener {
 
     /** 打开 Hypixel 式合成升级界面：3×3 合成格放入上一级本体 + 材料合成下一 Tier。 */
     private void openCraft(Player player, Minion minion) {
-        MinionTypeConfig cfg = config.type(minion.type());
+        MinionTypeConfig cfg = config.get().type(minion.type());
         if (minion.level() >= cfg.maxLevel()) {
             player.sendMessage(Messages.MAX_LEVEL);
             return;
@@ -352,7 +370,8 @@ public final class MinionGUIListener implements Listener {
             return;
         }
         giveOrDrop(player, collected.toArray(new ItemStack[0]));
-        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
+        manager.save(minion); // 清仓状态立即登记落库
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         player.sendMessage(Messages.COLLECTED_ALL);
     }
 

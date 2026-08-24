@@ -11,13 +11,14 @@
 #  · 删除任意键可回退到内置默认文案
 # ============================================================
 
-# GUI 顶部标题。占位符: {name}=类型中文名
-title: "仆从 · {name}"
+# GUI 顶部标题。占位符: {name}=类型中文名（类型名本身已含"仆从"后缀，直接展示）
+title: "{name}"
 
 # 信息书(槽3)。占位符: {name} {tier} {speed}=秒/次 {rate}=件/小时 {range}=范围
 #   {storage}=仓存件数 {slots}=已解锁格数 {total}=累计产出 {next}=距下次工作秒数 {status}=状态行
 #   可选: {rare}=稀有掉落物 {rare_chance}=几率%(仅配置了稀有掉落的类型提供)
 #   可选: {halted_tip} 停工恢复提示行（仅仓库满停工时显示）
+#   可选: {next_tier}+{unlock_mats} 下一档解锁行（仅配置 targets-by-tier 且仍有未解锁档时显示）
 info:
   title: "<gold>✦ {name} · 等级 {tier}</gold>"
   lore:
@@ -26,6 +27,7 @@ info:
     - "<dark_gray>速度 <green>{speed} 秒/次</green></dark_gray>"
     - "<dark_gray>产出 <green>≈ {rate} 件/小时</green></dark_gray>"
     - "<dark_gray>范围 <aqua>{range}</aqua></dark_gray>"
+    - "<dark_gray>{next_tier} 级解锁 <yellow>{unlock_mats}</yellow></dark_gray>"
     - "<dark_gray>存储 <white>{storage} 件 / {slots} 格</white></dark_gray>"
     - "<dark_gray>稀有掉落 <light_purple>{rare} ({rare_chance}%)</light_purple></dark_gray>"
     - "<dark_gray>取货或开启 <gold>自动售卖</gold> 后恢复工作{halted_tip}</dark_gray>"
@@ -54,6 +56,7 @@ upgrade:
     - "{m1}"
     - "{m2}"
     - "{m3}"
+    - "{m4}"
     - "{body}"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<yellow>点击打开升级合成界面 ▶</yellow>"
@@ -67,6 +70,7 @@ upgrade-lack:
     - "{m1}"
     - "{m2}"
     - "{m3}"
+    - "{m4}"
     - "{body}"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<gray>点击打开升级合成界面（材料需放入合成格）</gray>"
@@ -90,6 +94,7 @@ fuel:
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<dark_gray>永久加速 <green>+{perm}%</green></dark_gray>"
     - "<dark_gray>限时剩余 <yellow>{left} 秒</yellow> <green>({timed}%)</green></dark_gray>"
+    - "<dark_gray>产出倍率 <light_purple>{mult}</light_purple></dark_gray>"
     - "<gray>{nofuel}当前无燃料（仆从仍会工作）</gray>"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>"
@@ -159,19 +164,20 @@ autosell-off:
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<yellow>点击开启</yellow>"
 
-# 理想布局(槽51)。占位符: {side}=范围边长
-# 可选: {on}=开启状态行 / {off}=关闭状态行（仅圆石仆从提供，其余类型隐藏）
+# 理想布局(槽51)。占位符: {side}=范围边长 {layout_hint}=按类型的布局提示
+# 可选: {on}=开启状态行 / {off}=关闭状态行（仅支持自动布局的类型提供: 圆石/农夫）
 layout:
   title: "<aqua>理想布局</aqua>"
   lore:
     - "<dark_gray>工作范围 <white>{side}x{side}</white></dark_gray>"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
-    - "<green>{on}● 理想布局已开启（自动刷石中）</green>"
-    - "<gray>{off}○ 点击开启理想布局（自动摆水/岩浆）</gray>"
+    - "<green>{on}● 自动布局运行中</green>"
+    - "<gray>{off}○ 点击开启自动布局</gray>"
+    - "<dark_gray>{layout_hint}</dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<gray>· 中心留空放置仆从</gray>"
-    - "<gray>· 四周填充可采集方块</gray>"
-    - "<gray>· 保证光照防刷怪</gray>"
-    - "<dark_gray>· 多仆从共享边界可最大化产出</dark_gray>"
+    - "<gray>· 保证光照防刷怪促生长</gray>"
+    - "<dark_gray>· 关闭或拾取时自动还原摆放</dark_gray>"
 
 # 拾取仆从(槽52)。无占位符
 pickup:
@@ -220,7 +226,7 @@ collection-gui:
       - "{r1}"
       - "{r2}"
       - "{r3}"
-      - "<yellow>点击查看配方详情 ▶</yellow>"
+      - "<yellow>点击打开升级合成界面 ▶</yellow>"
   # 未解锁卡片（???）。占位符: {category} {product} {collected} {need}
   locked:
     title: "<dark_gray>???</dark_gray>"
@@ -254,11 +260,12 @@ fuel-gui:
   title: "<gold>选择燃料</gold>"
   empty:
     title: "<gray>背包中没有可用燃料</gray>"
-  # 燃料选项。占位符: {name} {boost}=加速% {duration}=持续时间 {count}=背包数量
+  # 燃料选项。占位符: {name} {boost}=加速% {mult}=产量倍率 {duration}=持续时间 {count}=背包数量
   option:
     title: "<yellow>{name}</yellow>"
     lore:
       - "<dark_gray>加速 <green>+{boost}%</green></dark_gray>"
+      - "<dark_gray>产出 <light_purple>{mult}</light_purple></dark_gray>"
       - "<dark_gray>持续 <white>{duration}</white> / 个</dark_gray>"
       - "<dark_gray>背包数量 <yellow>{count}</yellow></dark_gray>"
       - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
@@ -292,6 +299,7 @@ craft-gui:
       - "{m1}"
       - "{m2}"
       - "{m3}"
+      - "{m4}"
       - "{body}"
       - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
       - "<gray>把材料与本体放入左侧合成格</gray>"

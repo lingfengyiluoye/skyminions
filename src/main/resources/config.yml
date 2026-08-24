@@ -38,6 +38,17 @@ min-placement-distance: 5
 # 稀有掉落播报方式：true = 全服广播；false = 仅私聊通知主人
 rare-drop-broadcast: true
 
+# 离线收益结算（三道平衡锁，对齐 Hypixel）：
+#   ① 仓储即天花板：仓库满 = 不再累计，闲置产出按空位截断
+#   ② 仅基础速度：不吃燃料加速/产量倍率/布局加成（在线照料专属奖励）
+#   ③ 燃料真实燃烧：闲置时长从燃料剩余中等额扣除
+# 触发时机：仆从主人本人上线时一次性结算「区块未加载/半径无人/离线」的整段闲置窗
+offline-production:
+  enabled: true        # 总开关
+  max-hours: 24        # 单次结算最长回溯时长（小时）
+  rate-percent: 100    # 基础速度折扣（保守可设 50~70）
+  min-seconds: 180     # 低于此闲置秒数不结算
+
 database:
   type: sqlite               # sqlite | mysql
   sqlite-file: "minions.db"
@@ -69,153 +80,867 @@ collections:
   slot-milestones: [3, 5, 7]
   max-bonus-slots: 5              # 里程碑槽位加成硬上限（默认权限上限 + 此加成 = 玩家可放置总数）
 
+
+# ============================================================
+# 仆从类型（配置驱动，一种资源一个专属仆从 —— 对齐 Hypixel 内容广度）
+# ------------------------------------------------------------
+# 通用字段说明：
+#   behavior   行为原型：MINING/FARMING/FORAGING/FISHING/COMBAT/RANCHING/GENERATOR
+#              （决定工作方式；同行为复用同一策略引擎，仅产物/目标/曲线不同）
+#   icon       图鉴/生成物图标材质      display-name 类型名（全中文）
+#   targets    可采集方块（1 级起）；FORAGING 填单一原木=纯林经营，砍伐后自动补种对应树苗
+#   product    代表性产物（收集解锁计数 + 离线结算产物）
+#   upgrade-recipe           基础配方（随 upgrade-cost-growth 逐级陡增）
+#   upgrade-recipe-at.'12'   终阶覆盖行：整行替代该级配方（精块大额 + 稀有掉落回流）
+#   rare-drop / rare-drop-chance  专属稀有掉落（Hypixel 兴奋点）
+#   unlock-amount    收集解锁阈值（product 计数）
+#   cooldown-ticks   逐级动作间隔表（对齐 Hypixel 曲线）
+# 二阶"精块"命名对照（语境化别名，见 MaterialNames）：
+#   COAL_BLOCK煤炭精块 RAW_IRON_BLOCK粗铁精块 RAW_COPPER_BLOCK粗铜精块 RAW_GOLD_BLOCK金矿精块
+#   REDSTONE_BLOCK红石精块 LAPIS_BLOCK青金精块 DIAMOND_BLOCK钻石精块 EMERALD_BLOCK绿宝精块
+#   QUARTZ_BLOCK石英精块 CRYING_OBSIDIAN泣晶黑曜 HAY_BLOCK麦穗精块 BAMBOO_BLOCK草木精块
+#   BONE_BLOCK骸骨精块 PRISMARINE_BRICKS海洋精块
 types:
-  # 速率说明：动作间隔完全由 cooldown-ticks 逐级表决定（对齐 Hypixel 原版，燃料加速仍生效）；
-  # efficiency-per-level 固定 0.0，避免等级额外提速破坏原版曲线。
-  miner:
-    display-name: "矿工仆从"
+
+  # ===================== 采矿 MINING（10） =====================
+  煤矿仆从:
+    behavior: MINING
+    icon: COAL_ORE
     max-level: 12
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（tick，逐级表，完全对齐 Hypixel Coal Minion I-XI：15/15/13/13/12/12/10/10/9/9/7s，第12级沿用XI）
     cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
     sell-price-per-unit: 1.5
-    product: COAL                 # 收集解锁产物
-    # 升级配方：多材料（Tier1→2 基础数量），实际消耗 = 基础数量 × upgrade-cost-growth^(当前等级-1)
-    # 材料键支持两种来源：
-    #   · 原版材料：大写 Material 名（如 COBBLESTONE）
-    #   · CraftEngine 自定义物品：键含冒号即识别，如 "craftengine:my_item": 8
-    #     （未安装 CraftEngine 时该类材料无法匹配，建议仅在装了 CraftEngine 的服上启用）
+    product: COAL
+    targets: [COAL_ORE, DEEPSLATE_COAL_ORE, STONE, COBBLESTONE]
     upgrade-recipe:
-      COBBLESTONE: 64
-      COAL: 32
-      REDSTONE: 16
-    upgrade-cost-growth: 1.25     # 每升一级材料量 ×1.25，陡增曲线
-    base-radius: 2                # 固定工作半径（2 即 5x5，对齐 Hypixel 不随等级变）
-    harvest-cap: 1                # 对齐 Hypixel：每次动作产 1 件；调大可恢复「布局奖励」玩法
-    rare-drop: EMERALD            # 专属稀有掉落（可空 = 关闭）
-    rare-drop-chance: 0.003       # 稀有掉落概率（0.003 = 0.3%）
-    unlock-amount: 100            # 收集解锁：累计收集产物（product）达到此量才解锁（0 = 免解锁）
-    targets: [COAL_ORE, IRON_ORE, COPPER_ORE, GOLD_ORE, DIAMOND_ORE, DEEPSLATE_COAL_ORE, DEEPSLATE_IRON_ORE, DEEPSLATE_COPPER_ORE, DEEPSLATE_GOLD_ORE, DEEPSLATE_DIAMOND_ORE, STONE, COBBLESTONE]
-  farmer:
-    display-name: "农夫仆从"
+      COAL: 48
+      COBBLESTONE: 32
+      COAL_BLOCK: 2
+    rare-drop: EMERALD
+    rare-drop-chance: 0.003
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        COAL: 384
+        COAL_BLOCK: 64
+        EMERALD: 16
+
+  铁矿仆从:
+    behavior: MINING
+    icon: IRON_PICKAXE
     max-level: 12
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，完全对齐 Hypixel Wheat Minion I-XI：15/15/13/13/11/11/10/10/9/9/8s）
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 2.2
+    product: RAW_IRON
+    targets: [IRON_ORE, DEEPSLATE_IRON_ORE]
+    upgrade-recipe:
+      RAW_IRON: 40
+      STONE: 32
+      RAW_IRON_BLOCK: 2
+    rare-drop: ANVIL
+    rare-drop-chance: 0.002
+    unlock-amount: 120
+    upgrade-recipe-at:
+      '12':
+        RAW_IRON: 320
+        RAW_IRON_BLOCK: 64
+        ANVIL: 8
+
+  铜矿仆从:
+    behavior: MINING
+    icon: COPPER_INGOT
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.8
+    product: RAW_COPPER
+    targets: [COPPER_ORE, DEEPSLATE_COPPER_ORE]
+    upgrade-recipe:
+      RAW_COPPER: 40
+      STONE: 32
+      RAW_COPPER_BLOCK: 2
+    rare-drop: SPYGLASS
+    rare-drop-chance: 0.004
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        RAW_COPPER: 320
+        RAW_COPPER_BLOCK: 64
+        SPYGLASS: 4
+
+  金矿仆从:
+    behavior: MINING
+    icon: GOLD_INGOT
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 2.5
+    product: RAW_GOLD
+    targets: [GOLD_ORE, DEEPSLATE_GOLD_ORE]
+    upgrade-recipe:
+      RAW_GOLD: 36
+      NETHERRACK: 32
+      RAW_GOLD_BLOCK: 2
+    rare-drop: GOLDEN_APPLE
+    rare-drop-chance: 0.003
+    unlock-amount: 130
+    upgrade-recipe-at:
+      '12':
+        RAW_GOLD: 288
+        RAW_GOLD_BLOCK: 64
+        GOLDEN_APPLE: 12
+
+  红石仆从:
+    behavior: MINING
+    icon: REDSTONE
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.6
+    product: REDSTONE
+    targets: [REDSTONE_ORE, DEEPSLATE_REDSTONE_ORE]
+    upgrade-recipe:
+      REDSTONE: 44
+      STONE: 32
+      REDSTONE_BLOCK: 2
+    rare-drop: TNT
+    rare-drop-chance: 0.005
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        REDSTONE: 352
+        REDSTONE_BLOCK: 56
+        TNT: 24
+
+  青金石仆从:
+    behavior: MINING
+    icon: LAPIS_LAZULI
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.4
+    product: LAPIS_LAZULI
+    targets: [LAPIS_ORE, DEEPSLATE_LAPIS_ORE]
+    upgrade-recipe:
+      LAPIS_LAZULI: 40
+      STONE: 32
+      LAPIS_BLOCK: 2
+    rare-drop: EXPERIENCE_BOTTLE
+    rare-drop-chance: 0.01
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        LAPIS_LAZULI: 320
+        LAPIS_BLOCK: 56
+        EXPERIENCE_BOTTLE: 48
+
+  钻石仆从:
+    behavior: MINING
+    icon: DIAMOND
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 6.0
+    product: DIAMOND
+    targets: [DIAMOND_ORE, DEEPSLATE_DIAMOND_ORE]
+    upgrade-recipe:
+      DIAMOND: 24
+      STONE: 32
+      DIAMOND_BLOCK: 1
+    rare-drop: ECHO_SHARD
+    rare-drop-chance: 0.003
+    unlock-amount: 150
+    upgrade-recipe-at:
+      '12':
+        DIAMOND: 192
+        DIAMOND_BLOCK: 48
+        ECHO_SHARD: 12
+
+  绿宝石仆从:
+    behavior: MINING
+    icon: EMERALD
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 4.0
+    product: EMERALD
+    targets: [EMERALD_ORE, DEEPSLATE_EMERALD_ORE]
+    upgrade-recipe:
+      EMERALD: 20
+      STONE: 32
+      EMERALD_BLOCK: 1
+    rare-drop: TOTEM_OF_UNDYING
+    rare-drop-chance: 0.001
+    unlock-amount: 160
+    upgrade-recipe-at:
+      '12':
+        EMERALD: 160
+        EMERALD_BLOCK: 40
+        TOTEM_OF_UNDYING: 4
+
+  石英仆从:
+    behavior: MINING
+    icon: QUARTZ
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.8
+    product: QUARTZ
+    targets: [NETHER_QUARTZ_ORE]
+    upgrade-recipe:
+      QUARTZ: 40
+      NETHERRACK: 32
+      QUARTZ_BLOCK: 2
+    rare-drop: GHAST_TEAR
+    rare-drop-chance: 0.004
+    unlock-amount: 120
+    upgrade-recipe-at:
+      '12':
+        QUARTZ: 320
+        QUARTZ_BLOCK: 56
+        GHAST_TEAR: 16
+
+  黑曜石仆从:
+    behavior: MINING
+    icon: OBSIDIAN
+    max-level: 12
+    cooldown-ticks: [400, 400, 360, 360, 320, 320, 280, 280, 240, 240, 200, 200]
+    sell-price-per-unit: 3.0
+    product: OBSIDIAN
+    targets: [OBSIDIAN]
+    upgrade-recipe:
+      OBSIDIAN: 16
+      STONE: 32
+      CRYING_OBSIDIAN: 2
+    rare-drop: ENCHANTED_GOLDEN_APPLE
+    rare-drop-chance: 0.002
+    unlock-amount: 180
+    upgrade-recipe-at:
+      '12':
+        OBSIDIAN: 128
+        CRYING_OBSIDIAN: 32
+        ENCHANTED_GOLDEN_APPLE: 4
+
+  # ===================== 农业 FARMING（8） =====================
+  小麦仆从:
+    behavior: FARMING
+    icon: WHEAT
+    max-level: 12
     cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
     sell-price-per-unit: 0.8
     product: WHEAT
+    targets: [WHEAT]
     upgrade-recipe:
       WHEAT: 64
       CARROT: 32
-      PUMPKIN: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
-    harvest-cap: 1                # 对齐 Hypixel：每次动作产 1 件，作物不被破坏
+      HAY_BLOCK: 2
     rare-drop: GOLDEN_CARROT
     rare-drop-chance: 0.005
     unlock-amount: 100
-    targets: [WHEAT, CARROTS, POTATOES, BEETROOTS]
-  lumberjack:
-    display-name: "伐木工仆从"
+    upgrade-recipe-at:
+      '12':
+        WHEAT: 512
+        HAY_BLOCK: 64
+        GOLDEN_CARROT: 32
+
+  胡萝卜仆从:
+    behavior: FARMING
+    icon: CARROT
     max-level: 12
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，完全对齐 Hypixel Oak Minion I-XI：48/48/45/45/42/42/38/38/33/33/27s）
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.7
+    product: CARROT
+    targets: [CARROTS]
+    upgrade-recipe:
+      CARROT: 64
+      WHEAT: 24
+      HAY_BLOCK: 2
+    rare-drop: NAME_TAG
+    rare-drop-chance: 0.004
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        CARROT: 512
+        HAY_BLOCK: 64
+        NAME_TAG: 8
+
+  马铃薯仆从:
+    behavior: FARMING
+    icon: POTATO
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.7
+    product: POTATO
+    targets: [POTATOES]
+    upgrade-recipe:
+      POTATO: 64
+      WHEAT: 24
+      HAY_BLOCK: 2
+    rare-drop: GLISTERING_MELON_SLICE
+    rare-drop-chance: 0.004
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        POTATO: 512
+        HAY_BLOCK: 64
+        GLISTERING_MELON_SLICE: 24
+
+  南瓜仆从:
+    behavior: FARMING
+    icon: PUMPKIN
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 1.2
+    product: PUMPKIN
+    targets: [PUMPKIN]
+    upgrade-recipe:
+      PUMPKIN: 32
+      WHEAT: 24
+      HAY_BLOCK: 2
+    rare-drop: GOLDEN_APPLE
+    rare-drop-chance: 0.004
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        PUMPKIN: 256
+        HAY_BLOCK: 64
+        GOLDEN_APPLE: 24
+
+  西瓜仆从:
+    behavior: FARMING
+    icon: MELON
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.9
+    product: MELON_SLICE
+    targets: [MELON_STEM, MELON]
+    upgrade-recipe:
+      MELON_SLICE: 48
+      WHEAT: 24
+      HAY_BLOCK: 2
+    rare-drop: SPONGE
+    rare-drop-chance: 0.004
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        MELON_SLICE: 384
+        HAY_BLOCK: 64
+        SPONGE: 12
+
+  甜菜仆从:
+    behavior: FARMING
+    icon: BEETROOT
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.8
+    product: BEETROOT
+    targets: [BEETROOTS]
+    upgrade-recipe:
+      BEETROOT: 56
+      WHEAT: 24
+      HAY_BLOCK: 2
+    rare-drop: SUSPICIOUS_STEW
+    rare-drop-chance: 0.006
+    unlock-amount: 80
+    upgrade-recipe-at:
+      '12':
+        BEETROOT: 448
+        HAY_BLOCK: 64
+        SUSPICIOUS_STEW: 24
+
+  可可仆从:
+    behavior: FARMING
+    icon: COCOA_BEANS
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 1.1
+    product: COCOA_BEANS
+    targets: [COCOA]
+    upgrade-recipe:
+      COCOA_BEANS: 48
+      JUNGLE_LOG: 24
+      HAY_BLOCK: 2
+    rare-drop: PITCHER_POD
+    rare-drop-chance: 0.005
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        COCOA_BEANS: 384
+        HAY_BLOCK: 64
+        PITCHER_POD: 24
+
+  下界疣仆从:
+    behavior: FARMING
+    icon: NETHER_WART
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 1.6
+    product: NETHER_WART
+    targets: [NETHER_WART]
+    upgrade-recipe:
+      NETHER_WART: 40
+      SOUL_SAND: 24
+      HAY_BLOCK: 2
+    rare-drop: WITHER_ROSE
+    rare-drop-chance: 0.004
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        NETHER_WART: 320
+        HAY_BLOCK: 64
+        WITHER_ROSE: 16
+
+  # ===================== 林业 FORAGING（8） =====================
+  橡木仆从:
+    behavior: FORAGING
+    icon: OAK_LOG
+    max-level: 12
     cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
     sell-price-per-unit: 1.0
     product: OAK_LOG
+    targets: [OAK_LOG]
     upgrade-recipe:
       OAK_LOG: 64
       OAK_SAPLING: 32
-      APPLE: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
+      BAMBOO_BLOCK: 2
     rare-drop: GOLDEN_APPLE
     rare-drop-chance: 0.002
     unlock-amount: 150
-    targets: [OAK_LOG, SPRUCE_LOG, BIRCH_LOG, JUNGLE_LOG, ACACIA_LOG, DARK_OAK_LOG, MANGROVE_LOG, CHERRY_LOG]
-    # 伐木工为真实挖掘：连锁砍整棵树，砍完自动在树根补种对应树苗
-  fisher:
-    display-name: "钓鱼仆从"
+    upgrade-recipe-at:
+      '12':
+        OAK_LOG: 512
+        BAMBOO_BLOCK: 64
+        GOLDEN_APPLE: 16
+
+  白桦仆从:
+    behavior: FORAGING
+    icon: BIRCH_LOG
     max-level: 12
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，Hypixel Fishing Minion T1=75s/T11=35s，中间按每级 -4s 插值）
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.0
+    product: BIRCH_LOG
+    targets: [BIRCH_LOG]
+    upgrade-recipe:
+      BIRCH_LOG: 64
+      BIRCH_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: PAINTING
+    rare-drop-chance: 0.005
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        BIRCH_LOG: 512
+        BAMBOO_BLOCK: 64
+        PAINTING: 12
+
+  云杉仆从:
+    behavior: FORAGING
+    icon: SPRUCE_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.0
+    product: SPRUCE_LOG
+    targets: [SPRUCE_LOG]
+    upgrade-recipe:
+      SPRUCE_LOG: 64
+      SPRUCE_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: GOAT_HORN
+    rare-drop-chance: 0.002
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        SPRUCE_LOG: 512
+        BAMBOO_BLOCK: 64
+        GOAT_HORN: 4
+
+  丛林仆从:
+    behavior: FORAGING
+    icon: JUNGLE_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.1
+    product: JUNGLE_LOG
+    targets: [JUNGLE_LOG]
+    upgrade-recipe:
+      JUNGLE_LOG: 64
+      JUNGLE_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: LEATHER_HORSE_ARMOR
+    rare-drop-chance: 0.004
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        JUNGLE_LOG: 512
+        BAMBOO_BLOCK: 64
+        LEATHER_HORSE_ARMOR: 8
+
+  金合欢仆从:
+    behavior: FORAGING
+    icon: ACACIA_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.0
+    product: ACACIA_LOG
+    targets: [ACACIA_LOG]
+    upgrade-recipe:
+      ACACIA_LOG: 64
+      ACACIA_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: HONEY_BOTTLE
+    rare-drop-chance: 0.006
+    unlock-amount: 95
+    upgrade-recipe-at:
+      '12':
+        ACACIA_LOG: 512
+        BAMBOO_BLOCK: 64
+        HONEY_BOTTLE: 32
+
+  深色橡木仆从:
+    behavior: FORAGING
+    icon: DARK_OAK_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.1
+    product: DARK_OAK_LOG
+    targets: [DARK_OAK_LOG]
+    upgrade-recipe:
+      DARK_OAK_LOG: 64
+      DARK_OAK_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: ENCHANTED_GOLDEN_APPLE
+    rare-drop-chance: 0.001
+    unlock-amount: 130
+    upgrade-recipe-at:
+      '12':
+        DARK_OAK_LOG: 512
+        BAMBOO_BLOCK: 64
+        ENCHANTED_GOLDEN_APPLE: 6
+
+  樱花仆从:
+    behavior: FORAGING
+    icon: CHERRY_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.3
+    product: CHERRY_LOG
+    targets: [CHERRY_LOG]
+    upgrade-recipe:
+      CHERRY_LOG: 64
+      CHERRY_SAPLING: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: PINK_PETALS
+    rare-drop-chance: 0.01
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        CHERRY_LOG: 512
+        BAMBOO_BLOCK: 64
+        PINK_PETALS: 64
+
+  红树仆从:
+    behavior: FORAGING
+    icon: MANGROVE_LOG
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.2
+    product: MANGROVE_LOG
+    targets: [MANGROVE_LOG]
+    upgrade-recipe:
+      MANGROVE_LOG: 64
+      MANGROVE_PROPAGULE: 32
+      BAMBOO_BLOCK: 2
+    rare-drop: TROPICAL_FISH
+    rare-drop-chance: 0.005
+    unlock-amount: 105
+    upgrade-recipe-at:
+      '12':
+        MANGROVE_LOG: 512
+        BAMBOO_BLOCK: 64
+        TROPICAL_FISH: 32
+
+  # ===================== 钓鱼 FISHING（1） =====================
+  钓鱼仆从:
+    behavior: FISHING
+    icon: FISHING_ROD
+    max-level: 12
     cooldown-ticks: [1500, 1420, 1340, 1260, 1180, 1100, 1020, 940, 860, 780, 700, 700]
     sell-price-per-unit: 2.0
     product: COD
+    targets: [WATER]
     upgrade-recipe:
       COD: 48
       SALMON: 32
-      STRING: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
+      PRISMARINE_BRICKS: 2
     rare-drop: NAUTILUS_SHELL
     rare-drop-chance: 0.01
     unlock-amount: 80
-    targets: [WATER]              # canWork 检测附近是否有水
-  slayer:
-    display-name: "猎魔仆从"
+    upgrade-recipe-at:
+      '12':
+        COD: 256
+        PRISMARINE_BRICKS: 64
+        NAUTILUS_SHELL: 24
+
+  # ===================== 战斗 COMBAT（7） =====================
+  僵尸仆从:
+    behavior: COMBAT
+    icon: ROTTEN_FLESH
     max-level: 12
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，完全对齐 Hypixel Zombie Minion I-XI：26/26/24/24/22/22/20/20/17/17/13s）
+    preferred-targets: [ZOMBIE, ZOMBIE_VILLAGER, HUSK, DROWNED]
     cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
     sell-price-per-unit: 2.5
     product: ROTTEN_FLESH
     upgrade-recipe:
       ROTTEN_FLESH: 64
       BONE: 32
-      STRING: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
+      BONE_BLOCK: 2
     rare-drop: WITHER_SKELETON_SKULL
     rare-drop-chance: 0.002
     unlock-amount: 200
-    targets: []                   # 战斗型不受目标方块限制
-  rancher:
-    display-name: "牧民仆从"      # 纯模拟畜牧（对齐 Hypixel Cow/Chicken/Sheep）：
-    max-level: 12                 # 每次工作随机一种动物按战利品表 roll 掉落，不生成动物实体
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，完全对齐 Hypixel Cow Minion I-XI：26/26/24/24/22/22/20/20/17/17/13s）
+    upgrade-recipe-at:
+      '12':
+        ROTTEN_FLESH: 512
+        BONE_BLOCK: 64
+        WITHER_SKELETON_SKULL: 8
+
+  骷髅仆从:
+    behavior: COMBAT
+    icon: BONE
+    max-level: 12
+    preferred-targets: [SKELETON, STRAY]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.4
+    product: BONE
+    upgrade-recipe:
+      BONE: 64
+      ARROW: 32
+      BONE_BLOCK: 2
+    rare-drop: ENCHANTED_BOOK
+    rare-drop-chance: 0.002
+    unlock-amount: 130
+    upgrade-recipe-at:
+      '12':
+        BONE: 512
+        BONE_BLOCK: 64
+        ENCHANTED_BOOK: 8
+
+  苦力怕仆从:
+    behavior: COMBAT
+    icon: GUNPOWDER
+    max-level: 12
+    preferred-targets: [CREEPER]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.6
+    product: GUNPOWDER
+    upgrade-recipe:
+      GUNPOWDER: 56
+      SAND: 32
+      BONE_BLOCK: 2
+    rare-drop: DRAGON_HEAD
+    rare-drop-chance: 0.001
+    unlock-amount: 140
+    upgrade-recipe-at:
+      '12':
+        GUNPOWDER: 448
+        BONE_BLOCK: 64
+        DRAGON_HEAD: 2
+
+  蜘蛛仆从:
+    behavior: COMBAT
+    icon: STRING
+    max-level: 12
+    preferred-targets: [SPIDER, CAVE_SPIDER]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.3
+    product: STRING
+    upgrade-recipe:
+      STRING: 64
+      SLIME_BALL: 24
+      BONE_BLOCK: 2
+    rare-drop: FERMENTED_SPIDER_EYE
+    rare-drop-chance: 0.01
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        STRING: 512
+        BONE_BLOCK: 64
+        FERMENTED_SPIDER_EYE: 32
+
+  末影人仆从:
+    behavior: COMBAT
+    icon: ENDER_PEARL
+    max-level: 12
+    preferred-targets: [ENDERMAN]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 3.2
+    product: ENDER_PEARL
+    upgrade-recipe:
+      ENDER_PEARL: 24
+      BONE_BLOCK: 2
+    rare-drop: ENDER_EYE
+    rare-drop-chance: 0.008
+    unlock-amount: 160
+    upgrade-recipe-at:
+      '12':
+        ENDER_PEARL: 192
+        BONE_BLOCK: 64
+        ENDER_EYE: 24
+
+  烈焰人仆从:
+    behavior: COMBAT
+    icon: BLAZE_ROD
+    max-level: 12
+    preferred-targets: [BLAZE]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 3.5
+    product: BLAZE_ROD
+    upgrade-recipe:
+      BLAZE_ROD: 20
+      BLAZE_POWDER: 16
+      BONE_BLOCK: 2
+    rare-drop: BREWING_STAND
+    rare-drop-chance: 0.008
+    unlock-amount: 150
+    upgrade-recipe-at:
+      '12':
+        BLAZE_ROD: 160
+        BONE_BLOCK: 64
+        BREWING_STAND: 16
+
+  史莱姆仆从:
+    behavior: COMBAT
+    icon: SLIME_BALL
+    max-level: 12
+    preferred-targets: [SLIME]
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.2
+    product: SLIME_BALL
+    upgrade-recipe:
+      SLIME_BALL: 48
+      SLIME_BLOCK: 2
+      BONE_BLOCK: 2
+    rare-drop: LEAD
+    rare-drop-chance: 0.008
+    unlock-amount: 120
+    upgrade-recipe-at:
+      '12':
+        SLIME_BALL: 384
+        BONE_BLOCK: 64
+        LEAD: 24
+
+  # ===================== 畜牧 RANCHING（4） =====================
+  牛仆从:
+    behavior: RANCHING
+    icon: LEATHER
+    ranch-animal: COW
+    max-level: 12
     cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
     sell-price-per-unit: 1.2
     product: BEEF
     upgrade-recipe:
-      LEATHER: 32
-      BEEF: 32
-      WHEAT: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
+      BEEF: 48
+      LEATHER: 24
+      HAY_BLOCK: 2
     rare-drop: SADDLE
     rare-drop-chance: 0.005
     unlock-amount: 150
-    targets: []                   # 畜牧型不受目标方块限制（纯模拟产出牛羊鸡猪战利品）
-  cobble:
-    display-name: "圆石仆从"      # 生成器玩法（对齐 Hypixel Cobblestone Minion）：
-    max-level: 12                 # 无圆石可采时在固体上方生成圆石，下次采掉，免搭刷石机
-    base-efficiency: 1.0
-    efficiency-per-level: 0.0
-    base-fuel-ticks: 72000
-    # 动作间隔（逐级表，完全对齐 Hypixel Cobblestone Minion I-XI：14/14/12/12/10/10/9/9/8/8/7s）
+    upgrade-recipe-at:
+      '12':
+        BEEF: 384
+        HAY_BLOCK: 64
+        SADDLE: 8
+
+  羊仆从:
+    behavior: RANCHING
+    icon: WHITE_WOOL
+    ranch-animal: SHEEP
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 1.1
+    product: MUTTON
+    upgrade-recipe:
+      MUTTON: 48
+      WHITE_WOOL: 24
+      HAY_BLOCK: 2
+    rare-drop: EMERALD
+    rare-drop-chance: 0.004
+    unlock-amount: 120
+    upgrade-recipe-at:
+      '12':
+        MUTTON: 384
+        HAY_BLOCK: 64
+        EMERALD: 24
+
+  鸡仆从:
+    behavior: RANCHING
+    icon: FEATHER
+    ranch-animal: CHICKEN
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 1.0
+    product: CHICKEN
+    upgrade-recipe:
+      CHICKEN: 48
+      FEATHER: 24
+      HAY_BLOCK: 2
+    rare-drop: PHANTOM_MEMBRANE
+    rare-drop-chance: 0.006
+    unlock-amount: 110
+    upgrade-recipe-at:
+      '12':
+        CHICKEN: 384
+        HAY_BLOCK: 64
+        PHANTOM_MEMBRANE: 32
+
+  猪仆从:
+    behavior: RANCHING
+    icon: PORKCHOP
+    ranch-animal: PIG
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 1.15
+    product: PORKCHOP
+    upgrade-recipe:
+      PORKCHOP: 48
+      CARROT: 24
+      HAY_BLOCK: 2
+    rare-drop: CARROT_ON_A_STICK
+    rare-drop-chance: 0.006
+    unlock-amount: 115
+    upgrade-recipe-at:
+      '12':
+        PORKCHOP: 384
+        HAY_BLOCK: 64
+        CARROT_ON_A_STICK: 8
+
+  兔仆从:
+    behavior: RANCHING
+    icon: RABBIT_HIDE
+    ranch-animal: RABBIT
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 1.0
+    product: RABBIT
+    upgrade-recipe:
+      RABBIT: 48
+      RABBIT_HIDE: 24
+      HAY_BLOCK: 2
+    rare-drop: RABBIT_FOOT
+    rare-drop-chance: 0.006
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        RABBIT: 384
+        HAY_BLOCK: 64
+        RABBIT_FOOT: 24
+
+  # ===================== 生成器 GENERATOR（1） =====================
+  圆石仆从:
+    behavior: GENERATOR
+    icon: STONE_PICKAXE
+    max-level: 12
     cooldown-ticks: [280, 280, 240, 240, 200, 200, 180, 180, 160, 160, 140, 140]
     sell-price-per-unit: 0.3
     product: COBBLESTONE
     upgrade-recipe:
       COBBLESTONE: 64
       COAL: 16
-    upgrade-cost-growth: 1.25
-    base-radius: 2
     rare-drop: OBSIDIAN
     rare-drop-chance: 0.01
     unlock-amount: 250
-    targets: []                   # 生成器型自带圆石循环
+    upgrade-recipe-at:
+      '12':
+        COBBLESTONE: 1024
+        OBSIDIAN: 32

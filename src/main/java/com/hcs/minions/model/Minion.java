@@ -7,6 +7,7 @@ import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemCodec;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.MaterialNames;
+import com.hcs.minions.util.Roman;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
@@ -104,13 +105,17 @@ public final class Minion {
 
     private final UUID id;
     private final UUID owner;
-    private final MinionType type;
+    /** 类型 key（持久化身份）；{@link #type()} 每次从注册表解析，热重载即时生效。 */
+    private final String typeKey;
     private final Inventory storage;
 
     private volatile int level;
     private volatile BlockLocation location;
     private volatile long fuelTicks;
     private volatile double fuelBoost = 1.0;
+    /** 产量倍率燃料（催化剂类）：值与剩余时长，仅在线处理时衰减。 */
+    private volatile double multBoost = 1.0;
+    private volatile long multTicks;
     private volatile double permanentBoost = 1.0;
     private volatile boolean autoSell;
     private volatile long totalProduced;
@@ -124,27 +129,50 @@ public final class Minion {
     /** 理想布局开关（目前仅圆石生成器实际生效：自动摆水/岩浆）。运行时状态，不入存档。 */
     private volatile boolean idealLayout;
     /** 理想布局摆放的流体块位置（关闭/拾取时还原为空气）。 */
-    private final List<BlockLocation> layoutBlocks = new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** 布局摆放的方块位置 -> 摆放前的原方块（还原依据）。 */
+    private final java.util.Map<BlockLocation, Material> layoutBlocks = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 自动布局可能播种的作物集合（农夫布局还原时识别「我们种的作物」）。 */
+    private static final java.util.Set<Material> LAYOUT_CROPS =
+            java.util.EnumSet.of(Material.WHEAT, Material.CARROTS, Material.POTATOES, Material.BEETROOTS);
 
     private final AtomicLong nextWorkTick = new AtomicLong();
     private volatile int scanCursor;
     private volatile ArmorStand stand;
     private final AtomicBoolean dirty = new AtomicBoolean(false);
+    /**
+     * 落库通知钩子：markDirty() 时同步把本仆从 id 登记进仓库脏集合，
+     * 保证「运行期产出/燃料衰减」与「GUI 操作」走同一条持久化链路。
+     * 由 {@code CachedMinionRepository#register} 注入；未注册时仅置内存标记（如单测）。
+     */
+    private volatile Runnable dirtyHook;
     /** 上次为观看中的 GUI 刷新状态卡的时间（每秒一次，节流用）。 */
     private volatile long lastGuiRefreshTick;
+
+    /** 注册落库钩子（仓库缓存层在仆从入缓存时调用）。 */
+    public void setDirtyHook(Runnable hook) {
+        this.dirtyHook = hook;
+    }
+
+    public void markDirty() {
+        dirty.set(true);
+        Runnable hook = dirtyHook;
+        if (hook != null) {
+            hook.run();
+        }
+    }
 
     public Minion(UUID id, UUID owner, MinionType type, int level,
                   BlockLocation location, long fuelTicks, long lastActiveEpochMs, String islandId) {
         this.id = id;
         this.owner = owner;
-        this.type = type;
+        this.typeKey = type == null ? MinionType.fallback().key() : type.key();
         this.level = Math.max(1, level);
         this.location = location;
         this.fuelTicks = fuelTicks;
         this.lastActiveEpochMs = lastActiveEpochMs;
         this.islandId = islandId;
         this.storage = Bukkit.createInventory(new StorageHolder(id), GUI_SIZE,
-                GuiText.title("title", Map.of("name", type.displayName())));
+                GuiText.title("title", Map.of("name", type().displayName())));
     }
 
     public UUID id() {
@@ -155,8 +183,9 @@ public final class Minion {
         return owner;
     }
 
+    /** 解析当前类型（注册表热重载后自动跟随新定义；未知 key 回退 fallback）。 */
     public MinionType type() {
-        return type;
+        return MinionType.fromKey(typeKey).orElse(MinionType.fallback());
     }
 
     public float facing() {
@@ -176,9 +205,9 @@ public final class Minion {
         this.idealLayout = on;
     }
 
-    /** 记录布局摆放的流体块位置。 */
-    public void addLayoutBlock(BlockLocation loc) {
-        layoutBlocks.add(loc);
+    /** 记录布局摆放的方块位置 -> 摆放前的原方块（关闭/拾取时按原样还原）。 */
+    public void addLayoutBlock(BlockLocation loc, Material original) {
+        layoutBlocks.putIfAbsent(loc, original);
     }
 
     public boolean hasLayoutBlocks() {
@@ -186,8 +215,9 @@ public final class Minion {
     }
 
     /**
-     * 还原布局摆放的流体块（尽力而为）：仅当该位置仍是水/岩浆时才置为空气，
-     * 不会破坏玩家后续改动的方块。关闭理想布局与拾取仆从时调用。
+     * 还原布局摆放的方块（尽力而为）：只清理「我们摆上去的产物」——
+     * 原为空气的位置上的流体/作物清为空气，被耕过的耕地还原为原方块；
+     * 玩家后续改动过的位置不触碰。关闭理想布局与拾取仆从时调用。
      */
     public void cleanupLayoutBlocks() {
         if (layoutBlocks.isEmpty()) {
@@ -195,10 +225,16 @@ public final class Minion {
         }
         World world = location.bukkitWorld();
         if (world != null) {
-            for (BlockLocation bl : layoutBlocks) {
-                Block b = world.getBlockAt(bl.x(), bl.y(), bl.z());
-                if (b.getType() == Material.WATER || b.getType() == Material.LAVA) {
-                    b.setType(Material.AIR, false);
+            for (Map.Entry<BlockLocation, Material> e : layoutBlocks.entrySet()) {
+                Block b = world.getBlockAt(e.getKey().x(), e.getKey().y(), e.getKey().z());
+                Material orig = e.getValue();
+                if (orig.isAir()) {
+                    if (b.getType() == Material.WATER || b.getType() == Material.LAVA
+                            || LAYOUT_CROPS.contains(b.getType())) {
+                        b.setType(Material.AIR, false);
+                    }
+                } else if (b.getType() == Material.FARMLAND && orig != Material.FARMLAND) {
+                    b.setType(orig, false); // 耕地还原为泥土/草方块等
                 }
             }
         }
@@ -324,7 +360,15 @@ public final class Minion {
         return items;
     }
 
+    /**
+     * 原子扣除仓库中匹配 {@code ref} 的物品（两阶段：先足量校验再扣减）。
+     * 数量不足时<b>不做任何修改</b>并返回 false，杜绝"先扣后验"的部分扣除残留。
+     * 仅在仆从所在 region 线程调用（Inventory 独占）。
+     */
     public boolean consume(ItemRef ref, long amount) {
+        if (amount <= 0 || countInStorage(ref) < amount) {
+            return false;
+        }
         long remaining = amount;
         for (int i = 0; i < unlockedSlots() && remaining > 0; i++) {
             ItemStack item = storage.getItem(storageSlots()[i]);
@@ -339,7 +383,7 @@ public final class Minion {
             }
         }
         markDirty();
-        return remaining == 0;
+        return true;
     }
 
     public void removeItems(List<ItemStack> items) {
@@ -416,7 +460,7 @@ public final class Minion {
         int side = 2 * cfg.radiusFor(level) + 1;
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
-        v.put("tier", String.valueOf(level));
+        v.put("tier", Roman.of(level));
         v.put("speed", String.format("%.1f", secondsPerAction));
         v.put("rate", String.valueOf(itemsPerHour(secondsPerAction, cfg.harvestCap())));
         v.put("range", side + "x" + side);
@@ -425,6 +469,13 @@ public final class Minion {
         if (cfg.hasRareDrop()) {
             v.put("rare", MaterialNames.of(cfg.rareDrop()));
             v.put("rare_chance", String.format("%.2f", cfg.rareDropChance() * 100));
+        }
+        if (cfg.hasTierGating()) {
+            int next = cfg.nextUnlockLevel(level);
+            if (next > 0) { // 可选行：还有未解锁的目标档位时展示
+                v.put("next_tier", Roman.of(next));
+                v.put("unlock_mats", namesOf(cfg.unlocksAt(next)));
+            }
         }
         if (isStorageFull()) {
             v.put("status", "<red>⚠ 仓库已满 · 停工中</red>");
@@ -440,6 +491,18 @@ public final class Minion {
     /** 纯函数：指定等级下的单次工作秒数（含燃料加成），供当前/下一级对比。 */
     double secondsPerAction(MinionTypeConfig cfg, int atLevel) {
         return Math.max(0.1, cfg.cooldownTicksAt(atLevel) / 20.0 / cfg.efficiencyAt(atLevel) / fuelBoost());
+    }
+
+    /** 材料中文名列表拼接（顿号分隔），供信息卡解锁档位展示。 */
+    private static String namesOf(java.util.Set<Material> mats) {
+        StringBuilder sb = new StringBuilder();
+        for (Material m : mats) {
+            if (!sb.isEmpty()) {
+                sb.append('、');
+            }
+            sb.append(MaterialNames.of(m));
+        }
+        return sb.toString();
     }
 
     /** 仓库内现存物品件数（展示用）。 */
@@ -475,10 +538,10 @@ public final class Minion {
         String ownerName = Bukkit.getOfflinePlayer(owner).getName();
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
-        v.put("tier", String.valueOf(level));
+        v.put("tier", Roman.of(level));
         v.put("owner", ownerName == null ? "?" : ownerName);
         v.put("skin", skin.displayName());
-        return named(type.icon(), GuiText.title("head.title", v), GuiText.lore("head.lore", v));
+        return named(type().icon(), GuiText.title("head.title", v), GuiText.lore("head.lore", v));
     }
 
     /** 燃料槽占位提示物品 PDC 键（与真燃料区分，避免关闭 GUI 时被误当燃料消耗）。 */
@@ -494,6 +557,10 @@ public final class Minion {
         if (fuelTicks > 0) {
             v.put("left", String.valueOf(fuelTicks / 20));
             v.put("timed", String.valueOf((int) ((Math.max(fuelBoost, 1.0) - 1) * 100)));
+        }
+        if (multBoost > 1.0) {
+            v.put("mult", "×" + (multBoost == Math.floor(multBoost)
+                    ? String.valueOf((long) multBoost) : String.valueOf(multBoost)));
         }
         if (permanentBoost <= 1.0 && fuelTicks <= 0) {
             v.put("nofuel", "");
@@ -517,14 +584,14 @@ public final class Minion {
      *  多材料配方以 m1~m3 占位符逐行注入，材料名颜色随足够与否变化。 */
     private ItemStack upgradeButton(MinionTypeConfig cfg, boolean requireBody) {
         if (level >= cfg.maxLevel()) {
-            Map<String, String> max = Map.of("tier", String.valueOf(cfg.maxLevel()));
+            Map<String, String> max = Map.of("tier", Roman.of(cfg.maxLevel()));
             return named(GuiLayout.material("storage.upgrade.material-max"),
                     GuiText.title("upgrade-max.title", max), GuiText.lore("upgrade-max.lore", max));
         }
         Map<ItemRef, Long> recipe = cfg.recipeFor(level);
         boolean enough = true;
         Map<String, String> v = new LinkedHashMap<>();
-        v.put("tier", String.valueOf(level + 1));
+        v.put("tier", Roman.of(level + 1));
         v.put("speed_now", String.format("%.1f", secondsPerAction(cfg, level)));
         v.put("speed_next", String.format("%.1f", secondsPerAction(cfg, level + 1)));
         if (requireBody) {
@@ -532,8 +599,8 @@ public final class Minion {
         }
         int row = 1;
         for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
-            if (row > 3) {
-                break; // GUI 最多展示 3 行材料
+            if (row > 4) {
+                break; // GUI 最多展示 4 行材料
             }
             long owned = countInStorage(e.getKey());
             if (owned < e.getValue()) {
@@ -557,7 +624,7 @@ public final class Minion {
     private ItemStack upgradeSlotItem(MinionUpgradeType upgrade, int n, boolean unlocked) {
         if (!unlocked) {
             int tier = n == 1 ? UPGRADE_SLOT1_UNLOCK_TIER : UPGRADE_SLOT2_UNLOCK_TIER;
-            Map<String, String> v = Map.of("n", String.valueOf(n), "tier", String.valueOf(tier));
+            Map<String, String> v = Map.of("n", String.valueOf(n), "tier", Roman.of(tier));
             return named(GuiLayout.material("storage.locked.material"),
                     GuiText.title("module-locked.title", v), GuiText.lore("module-locked.lore", v));
         }
@@ -595,9 +662,20 @@ public final class Minion {
         int side = 2 * cfg.radiusFor(level) + 1;
         Map<String, String> v = new LinkedHashMap<>();
         v.put("side", String.valueOf(side));
-        if (type == MinionType.COBBLE) {
-            // 圆石仆从为可执行开关：可选行显示当前状态（其余类型不显示这两行）
-            v.put(idealLayout ? "on" : "off", "");
+        switch (type().behavior()) {
+            // 可执行开关类型：可选行 on/off 只渲染当前状态行
+            case GENERATOR -> {
+                v.put(idealLayout ? "on" : "off", "");
+                v.put("layout_hint", "自动摆水与岩浆，搭建经典刷石机");
+            }
+            case FARMING -> {
+                v.put(idealLayout ? "on" : "off", "");
+                v.put("layout_hint", "自动耕地播种，作物成熟后自动收割");
+            }
+            case MINING -> v.put("layout_hint", "矿石不会再生：请在范围内手动摆放目标矿石");
+            case FORAGING -> v.put("layout_hint", "请在范围内种树（砍伐后自动补种树苗）");
+            case FISHING -> v.put("layout_hint", "请在范围内留出水面");
+            default -> v.put("layout_hint", "该类型自动产出，无需布置方块");
         }
         return named(GuiLayout.material("storage.layout.material"), GuiText.title("layout.title", v), GuiText.lore("layout.lore", v));
     }
@@ -685,6 +763,46 @@ public final class Minion {
     /** 添加永久燃料（取最大加速，不衰减）。 */
     public void addPermanentFuel(double boost) {
         this.permanentBoost = Math.max(this.permanentBoost, boost);
+        markDirty();
+    }
+
+    /**
+     * 安装产量倍率燃料（催化剂类）：仅当新倍率高于当前剩余倍率时生效并重置时长；
+     * 更弱的催化剂不被消耗。返回是否实际安装。
+     */
+    public boolean addMultiplier(double multiplier, long durationTicks) {
+        if (multiplier <= 1.0 || durationTicks <= 0) {
+            return false;
+        }
+        if (multiplier > this.multBoost) {
+            this.multBoost = multiplier;
+            this.multTicks = durationTicks;
+            markDirty();
+            return true;
+        }
+        return false;
+    }
+
+    /** 当前产量倍率（1.0 = 无）。 */
+    public double prodMultiplier() {
+        return multBoost;
+    }
+
+    /** 产量倍率剩余 tick。 */
+    public long multTicks() {
+        return multTicks;
+    }
+
+    /** 在线处理时衰减倍率时长；归零自动复位 1.0。 */
+    public void tickMultiplier(long decayTicks) {
+        if (multTicks <= 0) {
+            return;
+        }
+        multTicks -= decayTicks;
+        if (multTicks <= 0) {
+            multTicks = 0;
+            multBoost = 1.0;
+        }
         markDirty();
     }
 
@@ -814,23 +932,20 @@ public final class Minion {
         this.stand = stand;
     }
 
-    public void markDirty() {
-        dirty.set(true);
-    }
-
     public void markClean() {
         dirty.set(false);
     }
 
+    /** 认领脏标记（CAS）：成功返回 true 表示本线程获得本轮快照权。 */
     public boolean tryClaimFlush() {
         return dirty.compareAndSet(true, false);
     }
 
     public MinionData toData() {
         return new MinionData(
-                id, owner, type.key(), level,
+                id, owner, typeKey, level,
                 location.world(), location.x(), location.y(), location.z(),
-                fuelTicks, lastActiveEpochMs, islandId,
+                fuelTicks, fuelBoost, multBoost, multTicks, lastActiveEpochMs, islandId,
                 upgrade1 == null ? null : upgrade1.key(),
                 upgrade2 == null ? null : upgrade2.key(),
                 skin.key(),
@@ -840,12 +955,16 @@ public final class Minion {
     }
 
     public static Minion fromData(MinionData d) {
-        MinionType type = MinionType.fromKey(d.type()).orElse(MinionType.MINER);
+        MinionType type = MinionType.fromKey(d.type()).orElseGet(MinionType::fallback);
         Minion m = new Minion(
                 d.id(), d.owner(), type, d.level(),
                 new BlockLocation(d.world(), d.x(), d.y(), d.z()),
                 d.fuelTicks(), d.lastActiveEpochMs(), d.islandId()
         );
+        m.setFuelBoost(Math.max(1.0, d.fuelBoost()));
+        if (d.multTicks() > 0 && d.multBoost() > 1.0) {
+            m.addMultiplier(d.multBoost(), d.multTicks());
+        }
         m.setStorageItems(ItemCodec.deserializeStacks(d.inventory()));
         m.setUpgrade1(MinionUpgradeType.fromKey(d.upgrade1()).orElse(null));
         m.setUpgrade2(MinionUpgradeType.fromKey(d.upgrade2()).orElse(null));

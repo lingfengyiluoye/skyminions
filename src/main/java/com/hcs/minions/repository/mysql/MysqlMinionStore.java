@@ -34,6 +34,9 @@ public final class MysqlMinionStore implements MinionStore {
               world VARCHAR(64) NOT NULL,
               x INT NOT NULL, y INT NOT NULL, z INT NOT NULL,
               fuel_ticks BIGINT NOT NULL,
+              fuel_boost DOUBLE NOT NULL DEFAULT 1.0,
+              mult_boost DOUBLE NOT NULL DEFAULT 1.0,
+              mult_ticks BIGINT NOT NULL DEFAULT 0,
               last_active BIGINT NOT NULL,
               island_id VARCHAR(36),
               upgrade1 VARCHAR(32),
@@ -42,17 +45,19 @@ public final class MysqlMinionStore implements MinionStore {
               auto_sell TINYINT NOT NULL DEFAULT 0,
               total_produced BIGINT NOT NULL DEFAULT 0,
               permanent_boost DOUBLE NOT NULL DEFAULT 1.0,
-              inventory BLOB
+              inventory MEDIUMBLOB
             )
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE
               owner=VALUES(owner), type=VALUES(type), level=VALUES(level), xp=VALUES(xp),
               world=VALUES(world), x=VALUES(x), y=VALUES(y), z=VALUES(z),
-              fuel_ticks=VALUES(fuel_ticks), last_active=VALUES(last_active),
+              fuel_ticks=VALUES(fuel_ticks), fuel_boost=VALUES(fuel_boost),
+              mult_boost=VALUES(mult_boost), mult_ticks=VALUES(mult_ticks),
+              last_active=VALUES(last_active),
               island_id=VALUES(island_id), upgrade1=VALUES(upgrade1), upgrade2=VALUES(upgrade2),
               skin=VALUES(skin), auto_sell=VALUES(auto_sell), total_produced=VALUES(total_produced),
               permanent_boost=VALUES(permanent_boost), inventory=VALUES(inventory)
@@ -115,12 +120,36 @@ public final class MysqlMinionStore implements MinionStore {
             addColumnIfMissing(st, existing, "upgrade1", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "upgrade2", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "skin", "VARCHAR(32)", null);
+            addColumnIfMissing(st, existing, "fuel_boost", "DOUBLE NOT NULL", "1.0");
+        addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
+        addColumnIfMissing(st, existing, "mult_ticks", "BIGINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "auto_sell", "TINYINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "total_produced", "BIGINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "permanent_boost", "DOUBLE NOT NULL", "1.0");
+            // 旧库 inventory 为 BLOB（64KB 上限），满仓复杂 NBT 会写失败，升级为 MEDIUMBLOB（16MB）
+            upgradeBlobToMediumBlob(c, existing);
             // owner 索引（按主人查询/统计时避免全表扫）
             if (!indexExists(c, "idx_minions_owner")) {
                 st.execute("CREATE INDEX idx_minions_owner ON minions(owner)");
+            }
+        }
+    }
+
+    /** 幂等：inventory 列仍为 BLOB 时升级为 MEDIUMBLOB。 */
+    private void upgradeBlobToMediumBlob(Connection c, java.util.Set<String> existing) throws Exception {
+        if (!existing.contains("inventory")) {
+            return;
+        }
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT DATA_TYPE FROM information_schema.COLUMNS "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'minions' AND COLUMN_NAME = 'inventory'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && "blob".equalsIgnoreCase(rs.getString("DATA_TYPE"))) {
+                    try (Statement st = c.createStatement()) {
+                        st.execute("ALTER TABLE minions MODIFY COLUMN inventory MEDIUMBLOB");
+                        Logs.info("已将 minions.inventory 从 BLOB 升级为 MEDIUMBLOB");
+                    }
+                }
             }
         }
     }
@@ -243,6 +272,9 @@ public final class MysqlMinionStore implements MinionStore {
         ps.setInt(i++, d.y());
         ps.setInt(i++, d.z());
         ps.setLong(i++, d.fuelTicks());
+        ps.setDouble(i++, d.fuelBoost());
+        ps.setDouble(i++, d.multBoost());
+        ps.setLong(i++, d.multTicks());
         ps.setLong(i++, d.lastActiveEpochMs());
         ps.setString(i++, d.islandId());
         ps.setString(i++, d.upgrade1());
@@ -263,6 +295,9 @@ public final class MysqlMinionStore implements MinionStore {
                 rs.getString("world"),
                 rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
                 rs.getLong("fuel_ticks"),
+                rs.getDouble("fuel_boost"),
+                rs.getDouble("mult_boost"),
+                rs.getLong("mult_ticks"),
                 rs.getLong("last_active"),
                 rs.getString("island_id"),
                 rs.getString("upgrade1"),

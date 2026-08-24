@@ -1,7 +1,7 @@
 package com.hcs.minions.listener;
 
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
-import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.BlockLocation;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionType;
@@ -46,11 +46,11 @@ public final class MinionInteractionListener implements Listener {
     private final PermissionService permissions;
     private final CollectionService collection;
     private final SkyblockHook skyblock;
-    private final PluginConfig config;
+    private final ConfigProvider config;
 
     public MinionInteractionListener(MinionManager manager, MinionItemService items, MinionEntityService entities,
                                      PermissionService permissions, CollectionService collection,
-                                     SkyblockHook skyblock, PluginConfig config) {
+                                     SkyblockHook skyblock, ConfigProvider config) {
         this.manager = manager;
         this.items = items;
         this.entities = entities;
@@ -72,7 +72,7 @@ public final class MinionInteractionListener implements Listener {
         Block block = event.getBlock();
 
         if (!permissions.canUseType(player, type.get())) {
-            MinionTypeConfig lockedCfg = config.type(type.get());
+            MinionTypeConfig lockedCfg = config.get().type(type.get());
             if (lockedCfg != null && !permissions.isUnlocked(player, type.get())) {
                 // 收集量未达标：提示解锁进度而非笼统的无权限
                 player.sendMessage(Messages.unlockRequired(MaterialNames.of(lockedCfg.product()),
@@ -95,8 +95,9 @@ public final class MinionInteractionListener implements Listener {
             return;
         }
 
-        MinionTypeConfig cfg = config.type(type.get());
+        MinionTypeConfig cfg = config.get().type(type.get());
         long fuel = items.parseFuel(hand);
+        double fuelBoost = items.parseFuelBoost(hand);
         Minion minion = new Minion(
                 UUID.randomUUID(), player.getUniqueId(), type.get(),
                 items.parseLevel(hand),
@@ -104,6 +105,23 @@ public final class MinionInteractionListener implements Listener {
                 fuel > 0 ? fuel : cfg.baseFuelTicks(),
                 System.currentTimeMillis(), null
         );
+        // 恢复拾取前状态：限时燃料加速、产量倍率、永久燃料、累计产出（自包含生成物的完整往返）
+        if (fuel > 0 && fuelBoost > 1.0) {
+            minion.setFuelBoost(fuelBoost);
+        }
+        double multBoost = items.parseMultBoost(hand);
+        long multTicks = items.parseMultTicks(hand);
+        if (multBoost > 1.0 && multTicks > 0) {
+            minion.addMultiplier(multBoost, multTicks);
+        }
+        double permanentBoost = items.parsePermanentBoost(hand);
+        if (permanentBoost > 1.0) {
+            minion.setPermanentBoost(permanentBoost);
+        }
+        long produced = items.parseTotalProduced(hand);
+        if (produced > 0) {
+            minion.addProduced(produced);
+        }
         minion.setStorageItems(items.parseStorage(hand));
         minion.setUpgrade1(items.parseUpgrade1(hand));
         minion.setUpgrade2(items.parseUpgrade2(hand));
@@ -133,9 +151,6 @@ public final class MinionInteractionListener implements Listener {
     // PlayerInteractEntityEvent 不会为 ArmorStand 触发）。
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInteractAtEntity(PlayerInteractAtEntityEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND) {
-            return;
-        }
         if (!(event.getRightClicked() instanceof ArmorStand stand)) {
             return;
         }
@@ -145,6 +160,12 @@ public final class MinionInteractionListener implements Listener {
         }
         Minion minion = manager.minion(id);
         if (minion == null) {
+            return;
+        }
+        // 主副手两次事件都会触发：主手处理完业务后，副手事件直接拦截，
+        // 防止原版盔甲架交互在副手路径上产生不一致行为
+        if (event.getHand() != EquipmentSlot.HAND) {
+            event.setCancelled(true);
             return;
         }
         event.setCancelled(true);
@@ -165,13 +186,24 @@ public final class MinionInteractionListener implements Listener {
             if (fuelValue.permanent()) {
                 minion.addPermanentFuel(fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
+                returnEmptyContainer(player, hand.getType());
                 player.sendMessage(Messages.permanentFuelEquipped((int) ((fuelValue.boost() - 1) * 100)));
+            } else if (fuelValue.hasMultiplier()) {
+                // 每次只消耗 1 个；弱于当前倍率则不消耗
+                if (!minion.addMultiplier(fuelValue.multiplier(), fuelValue.durationTicks())) {
+                    player.sendMessage(Messages.multFuelWeak(minion.prodMultiplier()));
+                    return;
+                }
+                hand.setAmount(hand.getAmount() - 1);
+                player.sendMessage(Messages.multFuelEquipped(fuelValue.multiplier(), fuelValue.durationTicks() / 20L));
             } else {
                 // 每次只消耗 1 个，避免手持整组误操作一次性吃光（GUI 燃料槽仍可整组安装）
                 minion.addFuel(fuelValue.durationTicks(), fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
+                returnEmptyContainer(player, hand.getType());
                 player.sendMessage(Messages.fuelAdded((int) ((fuelValue.boost() - 1) * 100)));
             }
+            manager.save(minion);
             return;
         }
 
@@ -194,6 +226,20 @@ public final class MinionInteractionListener implements Listener {
     }
 
     private void giveOrDrop(Player player, ItemStack item) {
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(item);
+        for (ItemStack leftover : overflow.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+        }
+    }
+
+    /** 桶装燃料（岩浆桶）消耗后返还空桶，对齐原版习惯。 */
+    private static void returnEmptyContainer(Player player, Material fuelMaterial) {
+        if (fuelMaterial == Material.LAVA_BUCKET) {
+            giveOrDropStatic(player, new ItemStack(Material.BUCKET, 1));
+        }
+    }
+
+    private static void giveOrDropStatic(Player player, ItemStack item) {
         Map<Integer, ItemStack> overflow = player.getInventory().addItem(item);
         for (ItemStack leftover : overflow.values()) {
             player.getWorld().dropItemNaturally(player.getLocation(), leftover);

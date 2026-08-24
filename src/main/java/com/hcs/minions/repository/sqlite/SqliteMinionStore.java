@@ -31,6 +31,9 @@ public final class SqliteMinionStore implements MinionStore {
               world VARCHAR(64) NOT NULL,
               x INT NOT NULL, y INT NOT NULL, z INT NOT NULL,
               fuel_ticks BIGINT NOT NULL,
+              fuel_boost DOUBLE NOT NULL DEFAULT 1.0,
+              mult_boost DOUBLE NOT NULL DEFAULT 1.0,
+              mult_ticks BIGINT NOT NULL DEFAULT 0,
               last_active BIGINT NOT NULL,
               island_id VARCHAR(36),
               upgrade1 VARCHAR(32),
@@ -44,12 +47,14 @@ public final class SqliteMinionStore implements MinionStore {
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               owner=excluded.owner, type=excluded.type, level=excluded.level, xp=excluded.xp,
               world=excluded.world, x=excluded.x, y=excluded.y, z=excluded.z,
-              fuel_ticks=excluded.fuel_ticks, last_active=excluded.last_active,
+              fuel_ticks=excluded.fuel_ticks, fuel_boost=excluded.fuel_boost,
+              mult_boost=excluded.mult_boost, mult_ticks=excluded.mult_ticks,
+              last_active=excluded.last_active,
               island_id=excluded.island_id, upgrade1=excluded.upgrade1, upgrade2=excluded.upgrade2,
               skin=excluded.skin, auto_sell=excluded.auto_sell, total_produced=excluded.total_produced,
               permanent_boost=excluded.permanent_boost, inventory=excluded.inventory
@@ -97,6 +102,9 @@ public final class SqliteMinionStore implements MinionStore {
         addColumnIfMissing(st, existing, "upgrade1", "VARCHAR(32)", null);
         addColumnIfMissing(st, existing, "upgrade2", "VARCHAR(32)", null);
         addColumnIfMissing(st, existing, "skin", "VARCHAR(32)", null);
+        addColumnIfMissing(st, existing, "fuel_boost", "DOUBLE NOT NULL", "1.0");
+        addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
+        addColumnIfMissing(st, existing, "mult_ticks", "BIGINT NOT NULL", "0");
         addColumnIfMissing(st, existing, "auto_sell", "INT NOT NULL", "0");
         addColumnIfMissing(st, existing, "total_produced", "BIGINT NOT NULL", "0");
         addColumnIfMissing(st, existing, "permanent_boost", "DOUBLE NOT NULL", "1.0");
@@ -220,6 +228,9 @@ public final class SqliteMinionStore implements MinionStore {
         ps.setInt(i++, d.y());
         ps.setInt(i++, d.z());
         ps.setLong(i++, d.fuelTicks());
+        ps.setDouble(i++, d.fuelBoost());
+        ps.setDouble(i++, d.multBoost());
+        ps.setLong(i++, d.multTicks());
         ps.setLong(i++, d.lastActiveEpochMs());
         ps.setString(i++, d.islandId());
         ps.setString(i++, d.upgrade1());
@@ -240,6 +251,9 @@ public final class SqliteMinionStore implements MinionStore {
                 rs.getString("world"),
                 rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
                 rs.getLong("fuel_ticks"),
+                rs.getDouble("fuel_boost"),
+                rs.getDouble("mult_boost"),
+                rs.getLong("mult_ticks"),
                 rs.getLong("last_active"),
                 rs.getString("island_id"),
                 rs.getString("upgrade1"),

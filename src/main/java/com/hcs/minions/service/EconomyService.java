@@ -1,6 +1,6 @@
 package com.hcs.minions.service;
 
-import com.hcs.minions.config.EconomyConfig;
+import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.util.AsyncExecutor;
 import com.hcs.minions.util.Logs;
 import net.milkbowl.vault.economy.Economy;
@@ -25,18 +25,20 @@ public final class EconomyService {
 
     private final Economy economy;
     private final AsyncExecutor async;
-    private final EconomyConfig cfg;
+    private final ConfigProvider config;
     private final JavaPlugin plugin;
 
-    public EconomyService(JavaPlugin plugin, EconomyConfig cfg, AsyncExecutor async) {
+    public EconomyService(JavaPlugin plugin, ConfigProvider config, AsyncExecutor async) {
         this.plugin = plugin;
-        this.cfg = cfg;
+        this.config = config;
         this.async = async;
-        this.economy = setupEconomy();
+        // Vault 注册一次即可（经济插件不会随 /minion reload 变化）；
+        // 价格倍率等数值参数经 config 实时读取，热重载即时生效
+        this.economy = setupEconomy(config.get());
     }
 
-    private Economy setupEconomy() {
-        if (!cfg.enabled() || !Bukkit.getPluginManager().isPluginEnabled("Vault")) {
+    private Economy setupEconomy(com.hcs.minions.config.PluginConfig cfg) {
+        if (!cfg.economy().enabled() || !Bukkit.getPluginManager().isPluginEnabled("Vault")) {
             Logs.warn("Vault 未启用，经济功能关闭");
             return null;
         }
@@ -58,7 +60,7 @@ public final class EconomyService {
     public long priceCents(long units, double pricePerUnit) {
         return BigDecimal.valueOf(units)
                 .multiply(BigDecimal.valueOf(pricePerUnit))
-                .multiply(BigDecimal.valueOf(cfg.priceMultiplier()))
+                .multiply(BigDecimal.valueOf(config.get().economy().priceMultiplier()))
                 .multiply(BigDecimal.valueOf(100))
                 .longValue();
     }

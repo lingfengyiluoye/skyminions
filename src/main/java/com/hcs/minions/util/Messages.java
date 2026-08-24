@@ -107,7 +107,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>");
         DEFAULTS.put("upgrade-missing-body", "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>");
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
-        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
+        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
         DEFAULTS.put("usage-give", "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>");
         DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖)</dark_gray>");
         DEFAULTS.put("level-must-be-number", "<red>✖ 等级必须是数字</red>");
@@ -116,6 +116,8 @@ public final class Messages {
         DEFAULTS.put("given-minion", "<green>✔ 已发放</green> <gold>{0}</gold> <white>等级 {1}</white>\n<gray>右键方块放置仆从</gray>");
         DEFAULTS.put("given-upgrade", "<green>✔ 已发放模块</green> <aqua>{0}</aqua>\n<gray>手持模块点击仆从的模块槽装备</gray>");
         DEFAULTS.put("total-minions", "<yellow>当前在线仆从总数: {0}</yellow>");
+        DEFAULTS.put("stats-header", "<gold><bold>▼ SkyMinions 运行统计</bold></gold>");
+        DEFAULTS.put("stats-line", "<gray>· {0}</gray>");
         DEFAULTS.put("config-reloaded", "<green>✔ 配置与文案已重新加载</green>");
         DEFAULTS.put("purged", "<green>✔ 已清理 {0} 个残留仆从实体</green>");
         DEFAULTS.put("available-skins", "<gray>可用皮肤</gray><white>: {0}</white>");
@@ -131,9 +133,14 @@ public final class Messages {
         DEFAULTS.put("layout-tip-light", "<gray>· 保证光照 ≥ 8，防止刷怪干扰</gray>");
         DEFAULTS.put("layout-tip-shared", "<gray>· 多个仆从共享边界，可最大化产出</gray>");
         DEFAULTS.put("layout-range", "<white>工作范围</white><gray>: <yellow>{0}x{0}</yellow>（中心放置仆从）</gray>");
-        DEFAULTS.put("layout-enabled", "<green>✔ 理想布局已开启</green>\n<gray>仆从将自动摆放水与岩浆搭建刷石机</gray>");
-        DEFAULTS.put("layout-disabled", "<gray>理想布局已关闭，摆放的水与岩浆已还原</gray>");
+        DEFAULTS.put("layout-enabled", "<green>✔ 理想布局已开启</green>\n<gray>圆石仆从自动摆水与岩浆刷石；农夫自动耕地播种</gray>");
+        DEFAULTS.put("layout-disabled", "<gray>理想布局已关闭，摆放的水/岩浆/耕地作物已还原</gray>");
         DEFAULTS.put("unlock-required", "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>");
+        DEFAULTS.put("offline-header", "<gold><bold>▲ 离线收获 · {0}</bold></gold>");
+        DEFAULTS.put("offline-detail", "<dark_gray>· {0} <yellow>×{1}</yellow></dark_gray>");
+        DEFAULTS.put("offline-total", "<green>✔ 共 {0} 件已入仓</green>\n<gray>仓库满后不再累计，闲置收益以仓储为上限</gray>");
+        DEFAULTS.put("mult-fuel-equipped", "<green>✔ 已安装产量催化剂</green>\n<gray>产出 <yellow>×{0}</yellow>，持续 {1} 秒（仅在线生效）</gray>");
+        DEFAULTS.put("mult-fuel-weak", "<gray>当前已有 ≥{0} 的更强倍率在生效，该催化剂未被消耗</gray>");
     }
 
     /** 从 messages.yml 加载文案；文件不存在则写出默认文件。可重复调用（热重载）。 */
@@ -271,6 +278,16 @@ public final class Messages {
         return render("purged", count);
     }
 
+    /** 运行统计标题（/minion stats）。 */
+    public static Component statsHeader() {
+        return render("stats-header");
+    }
+
+    /** 运行统计单行。 */
+    public static Component statsLine(String line) {
+        return render("stats-line", line);
+    }
+
     public static Component availableSkins(String list) {
         return render("available-skins", list);
     }
@@ -311,6 +328,31 @@ public final class Messages {
 
     public static Component rareDrop(String minionName, String itemName) {
         return render("rare-drop", minionName, itemName);
+    }
+
+    /** 离线结算标题。 */
+    public static Component offlineHeader(String minionName) {
+        return render("offline-header", minionName);
+    }
+
+    /** 离线结算单行明细。 */
+    public static Component offlineDetail(String name, long amount) {
+        return render("offline-detail", name, amount);
+    }
+
+    /** 离线结算总计行。 */
+    public static Component offlineTotal(long totalUnits) {
+        return render("offline-total", totalUnits);
+    }
+
+    /** 催化剂安装成功提示（{0}=倍率 {1}=剩余秒）。 */
+    public static Component multFuelEquipped(double multiplier, long seconds) {
+        return render("mult-fuel-equipped", multiplier, seconds);
+    }
+
+    /** 催化剂弱于当前倍率、未被消耗提示。 */
+    public static Component multFuelWeak(double currentMultiplier) {
+        return render("mult-fuel-weak", currentMultiplier);
     }
 
     // ------------------------------------------------------------------

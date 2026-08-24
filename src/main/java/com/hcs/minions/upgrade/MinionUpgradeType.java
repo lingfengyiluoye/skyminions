@@ -26,7 +26,7 @@ public enum MinionUpgradeType {
     COMPACTOR("compactor", "自动压缩", Material.CRAFTING_TABLE, "9:1 合成方块形态"),
     SUPER_COMPACTOR("super_compactor", "超级压缩 3000", Material.ENCHANTED_GOLDEN_APPLE, "散装资源自动合成为附魔形态"),
     DIAMOND_SPREADING("diamond_spreading", "钻石散布", Material.DIAMOND, "工作时有概率额外产出钻石"),
-    MINION_EXPANDER("minion_expander", "范围扩展", Material.STONE_BRICKS, "工作面积 +5%"),
+    MINION_EXPANDER("minion_expander", "范围扩展", Material.STONE_BRICKS, "扩大工作范围（面积放大）"),
     AUTO_SELLER("auto_seller", "自动售卖漏斗", Material.HOPPER, "仓库满时自动出售产物");
 
     private final String key;

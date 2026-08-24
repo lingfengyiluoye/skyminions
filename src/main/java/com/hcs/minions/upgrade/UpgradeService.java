@@ -144,8 +144,13 @@ public final class UpgradeService {
     // ------------------------------------------------------------------
 
     /**
-     * 范围扩展：装备模块时工作面积 +5%（对齐 Hypixel 原版，非半径 +1）。
-     * 面积 (2r+1)^2 放大 1.05 后反推边长与半径。
+     * 范围扩展：工作面积放大（对齐 Hypixel 的范围扩展玩法）。
+     *
+     * <p>注意：对称方形工作区边长只能取奇数，无法精确表达 +5% ——
+     * 在默认 5x5 下「面积 ≥ 105%」的最小奇数边即 7x7。此处选择满足
+     * 「面积不低于目标」的最小奇数边长（向上取整到最近奇数），
+     * 保证模块在小半径下也确实生效；GUI 文案只描述"扩大工作范围"，
+     * 不承诺精确百分比。</p>
      */
     public int radiusFor(Minion minion, int baseRadius) {
         if (!minion.hasUpgrade(MinionUpgradeType.MINION_EXPANDER)) {
@@ -154,7 +159,7 @@ public final class UpgradeService {
         return radiusForArea(baseRadius, EXPANDER_AREA_BONUS);
     }
 
-    /** 纯函数：面积放大 {@code areaBonus} 后反推工作半径（保持奇数边长对称），供单测验证。 */
+    /** 纯函数：面积放大 {@code areaBonus} 后反推工作半径（边长保持奇数以维持中心对称），供单测验证。 */
     static int radiusForArea(int baseRadius, double areaBonus) {
         int side = 2 * baseRadius + 1;
         double expandedSide = side * Math.sqrt(areaBonus);
@@ -162,7 +167,7 @@ public final class UpgradeService {
         if (newSide % 2 == 0) {
             newSide++; // 保持奇数，保证对称
         }
-        return (newSide - 1) / 2;
+        return Math.max(baseRadius, (newSide - 1) / 2); // 永不缩小
     }
 
     /** 是否装备了自动售卖模块。 */

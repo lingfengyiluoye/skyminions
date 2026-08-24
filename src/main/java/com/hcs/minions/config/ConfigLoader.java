@@ -1,6 +1,9 @@
 package com.hcs.minions.config;
 
+import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.model.MinionCategory;
 import com.hcs.minions.model.MinionSkin;
+import com.hcs.minions.model.MinionType;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.Logs;
 import org.bukkit.Material;
@@ -8,6 +11,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,6 +74,9 @@ public final class ConfigLoader {
 
         CollectionConfig collections = loadCollections(yaml.getConfigurationSection("collections"));
 
+        // 离线收益结算（三道平衡锁：仓储天花板 / 仅基础速度 / 燃料真实燃烧）
+        OfflineProductionConfig offlineProduction = loadOfflineProduction(yaml.getConfigurationSection("offline-production"));
+
         return new PluginConfig(
                 database, economy, render,
                 yaml.getLong("tick-period", 20),
@@ -79,11 +86,25 @@ public final class ConfigLoader {
                 yaml.getBoolean("debug", false),
                 types,
                 collections,
+                offlineProduction,
                 yaml.getBoolean("upgrade-require-previous-body", true),
                 yaml.getBoolean("collection-unlock-enabled", true),
                 yaml.getDouble("player-scan-radius", 48.0),
                 yaml.getInt("min-placement-distance", 5),
                 yaml.getBoolean("rare-drop-broadcast", true)
+        );
+    }
+
+    /** 解析离线收益配置（缺失时用安全默认值）。 */
+    private static OfflineProductionConfig loadOfflineProduction(ConfigurationSection section) {
+        if (section == null) {
+            return new OfflineProductionConfig(true, 24, 100, 180);
+        }
+        return new OfflineProductionConfig(
+                section.getBoolean("enabled", true),
+                section.getInt("max-hours", 24),
+                section.getInt("rate-percent", 100),
+                section.getInt("min-seconds", 180)
         );
     }
 
@@ -112,13 +133,28 @@ public final class ConfigLoader {
     private static Map<String, MinionTypeConfig> loadTypes(ConfigurationSection section) {
         Map<String, MinionTypeConfig> out = new LinkedHashMap<>();
         if (section == null) {
+            MinionType.loadAll(List.of());
             return out;
         }
+        List<MinionType> kinds = new ArrayList<>();
         for (String key : section.getKeys(false)) {
             ConfigurationSection s = section.getConfigurationSection(key);
             if (s == null) {
                 continue;
             }
+            // ---- 身份层：注册类型（行为必填，图标/分类有默认） ----
+            MinionBehavior behavior = parseBehavior(s.getString("behavior"), key);
+            if (behavior == null) {
+                Logs.warn("仆从类型 {} 缺少有效 behavior 字段（miner/farmer/lumberjack/fisher/slayer/rancher/cobble 对应 "
+                        + "mining/farming/foraging/fishing/combat/ranching/generator），已跳过", key);
+                continue;
+            }
+            String keyLower = key.toLowerCase(Locale.ROOT);
+            Material icon = parseMaterial(s.getString("icon"), defaultIcon(behavior));
+            MinionCategory category = parseCategory(s.getString("category"), behavior);
+            kinds.add(MinionType.of(keyLower, s.getString("display-name", key), behavior, category, icon));
+
+            // ---- 调参层：MinionTypeConfig ----
             Set<Material> targets = EnumSet.noneOf(Material.class);
             for (String name : s.getStringList("targets")) {
                 try {
@@ -127,6 +163,9 @@ public final class ConfigLoader {
                     Logs.warn("未知目标方块: {} (仆从类型 {})", name, key);
                 }
             }
+            Map<Integer, Set<Material>> targetsByTier = parseTargetsByTier(s, key);
+            // 分阶配方覆盖（稀有掉落回流载体）：'9': { EMERALD: 8, ... } 整行替代该级配方
+            Map<Integer, Map<ItemRef, Long>> recipeOverrides = parseRecipeOverrides(s, key);
             Material product = parseMaterial(s.getString("product"), Material.COBBLESTONE);
             // 升级配方：多材料 + 陡增曲线；未配 upgrade-recipe 时回退旧 upgrade-item/upgrade-cost 单材料
             Map<ItemRef, Long> upgradeRecipe = parseRecipe(s, product, key);
@@ -149,7 +188,7 @@ public final class ConfigLoader {
                 Logs.warn("仆从类型 {} 配置了 rare-drop-chance 但无有效 rare-drop，稀有掉落已关闭", key);
                 rareDropChance = 0;
             }
-            out.put(key, new MinionTypeConfig(
+            out.put(keyLower, new MinionTypeConfig(
                     key,
                     s.getString("display-name", key),
                     s.getInt("max-level", 11),
@@ -165,10 +204,93 @@ public final class ConfigLoader {
                     s.getInt("harvest-cap", 1),
                     cooldownPerLevel,
                     targets,
+                    targetsByTier,
                     rareDrop,
                     rareDropChance,
-                    s.getLong("unlock-amount", 0)
+                    s.getLong("unlock-amount", 0),
+                    recipeOverrides,
+                    java.util.Set.copyOf(s.getStringList("preferred-targets")),
+                    s.getString("ranch-animal")
             ));
+        }
+        MinionType.loadAll(kinds);
+        return out;
+    }
+
+    private static MinionBehavior parseBehavior(String raw, String key) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return MinionBehavior.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            Logs.warn("仆从类型 {} 的 behavior 无效: {}", key, raw);
+            return null;
+        }
+    }
+
+    private static MinionCategory parseCategory(String raw, MinionBehavior behavior) {
+        if (raw != null && !raw.isBlank()) {
+            try {
+                return MinionCategory.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                Logs.warn("分类 {} 无效，回退行为默认分类", raw);
+            }
+        }
+        return switch (behavior) {
+            case MINING -> MinionCategory.MINING;
+            case FARMING -> MinionCategory.FARMING;
+            case FORAGING -> MinionCategory.FORAGING;
+            case FISHING -> MinionCategory.FISHING;
+            case COMBAT -> MinionCategory.COMBAT;
+            case RANCHING, GENERATOR -> MinionCategory.SPECIAL;
+        };
+    }
+
+    private static Material defaultIcon(MinionBehavior behavior) {
+        return switch (behavior) {
+            case MINING -> Material.DIAMOND_PICKAXE;
+            case FARMING -> Material.GOLDEN_HOE;
+            case FORAGING -> Material.IRON_AXE;
+            case FISHING -> Material.FISHING_ROD;
+            case COMBAT -> Material.DIAMOND_SWORD;
+            case RANCHING -> Material.SHEARS;
+            case GENERATOR -> Material.STONE_PICKAXE;
+        };
+    }
+
+    /** 解析分级解锁目标（targets-by-tier）：键 = 解锁等级数字，值 = 方块名列表；
+     *  等级非数字/越界(2~max-level)或方块名非法时告警并跳过该项。 */
+    private static Map<Integer, Set<Material>> parseTargetsByTier(ConfigurationSection s, String key) {
+        Map<Integer, Set<Material>> out = new java.util.TreeMap<>();
+        ConfigurationSection ts = s.getConfigurationSection("targets-by-tier");
+        if (ts == null) {
+            return out;
+        }
+        int maxLevel = s.getInt("max-level", 11);
+        for (String k : ts.getKeys(false)) {
+            int level;
+            try {
+                level = Integer.parseInt(k.trim());
+            } catch (NumberFormatException e) {
+                Logs.warn("仆从类型 {} 的 targets-by-tier 含非数字等级键: {}，已忽略", key, k);
+                continue;
+            }
+            if (level < 2 || level > maxLevel) {
+                Logs.warn("仆从类型 {} 的 targets-by-tier 等级 {} 超出范围 (2~{})，已忽略", key, level, maxLevel);
+                continue;
+            }
+            Set<Material> group = EnumSet.noneOf(Material.class);
+            for (String name : ts.getStringList(k)) {
+                try {
+                    group.add(Material.valueOf(name.toUpperCase(Locale.ROOT)));
+                } catch (IllegalArgumentException e) {
+                    Logs.warn("未知目标方块: {} (仆从类型 {} 等级 {})", name, key, level);
+                }
+            }
+            if (!group.isEmpty()) {
+                out.put(level, group);
+            }
         }
         return out;
     }
@@ -196,6 +318,44 @@ public final class ConfigLoader {
             recipe.put(new ItemRef.VanillaRef(item), Math.max(1, s.getLong("upgrade-cost", 64)));
         }
         return recipe;
+    }
+
+    /** 解析分阶配方覆盖：键 = 升级前等级数字，值 = 材料->数量（整行替代该级配方）。 */
+    private static Map<Integer, Map<ItemRef, Long>> parseRecipeOverrides(ConfigurationSection s, String key) {
+        Map<Integer, Map<ItemRef, Long>> out = new java.util.TreeMap<>();
+        ConfigurationSection rs = s.getConfigurationSection("upgrade-recipe-at");
+        if (rs == null) {
+            return out;
+        }
+        for (String levelKey : rs.getKeys(false)) {
+            int level;
+            try {
+                level = Integer.parseInt(levelKey.trim());
+            } catch (NumberFormatException e) {
+                Logs.warn("仆从类型 {} 的 upgrade-recipe-at 含非数字等级键: {}，已忽略", key, levelKey);
+                continue;
+            }
+            ConfigurationSection row = rs.getConfigurationSection(levelKey);
+            if (row == null) {
+                continue;
+            }
+            Map<ItemRef, Long> recipe = new LinkedHashMap<>();
+            for (String matName : row.getKeys(false)) {
+                ItemRef ref = ItemRef.parse(matName);
+                if (ref == null) {
+                    Logs.warn("仆从 {} 第 {} 级覆盖配方含未知物料: {}", key, level, matName);
+                    continue;
+                }
+                long amount = row.getLong(matName, 0);
+                if (amount > 0) {
+                    recipe.put(ref, amount);
+                }
+            }
+            if (!recipe.isEmpty()) {
+                out.put(level, recipe);
+            }
+        }
+        return out;
     }
 
     private static String str(FileConfiguration yaml, String path, String def) {
