@@ -1,0 +1,49 @@
+name: SkyMinions
+version: "1.0.0"
+main: com.hcs.minions.MinionsPlugin
+api-version: "1.21"
+description: SkyMinions 仆从系统（Hypixel 风格）
+authors: [hcs]
+
+# 可选软依赖：缺失时插件仍可运行，仅关闭对应能力
+dependencies:
+  - name: Vault
+    required: false
+  - name: SuperiorSkyblock2
+    required: false
+  # CraftEngine：升级配方可用 "craftengine:<id>" 自定义物品作材料（未安装时自动降级为仅原版材料）
+  - name: CraftEngine
+    required: false
+
+# 运行时依赖：由 Paper 在加载插件时从 Maven Central 自动下载并挂载到插件类加载器，
+# 因此 jar 无需打包这些库（保持瘦 jar）。
+libraries:
+  - it.unimi.dsi:fastutil:8.5.15
+  - com.zaxxer:HikariCP:5.1.0
+  - org.xerial:sqlite-jdbc:3.46.0.0
+  - com.mysql:mysql-connector-j:8.4.0
+  - com.google.protobuf:protobuf-java:3.25.1
+
+# 权限（LuckPerms 会自动接管这些 Bukkit 权限）：
+#   hcs.minions.admin         管理权限（op 默认拥有）
+#   hcs.minions.use          使用仆从（默认人人有）
+#   hcs.minions.type.miner    可使用矿工仆从
+#   hcs.minions.type.farmer   可使用农夫仆从
+#   hcs.minions.type.lumberjack 可使用伐木工仆从
+#   hcs.minions.limit.<n>     仆从数量上限（取拥有的最大 n，如 hcs.minions.limit.20）
+permissions:
+  hcs.minions.admin:
+    description: 仆从系统管理权限
+    default: op
+  hcs.minions.use:
+    description: 使用仆从
+    default: true
+  hcs.minions.type.miner:
+    description: 使用矿工仆从
+    default: true
+  hcs.minions.type.farmer:
+    description: 使用农夫仆从
+    default: true
+  hcs.minions.type.lumberjack:
+    description: 使用伐木工仆从
+    default: true

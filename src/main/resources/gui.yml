@@ -1,0 +1,271 @@
+# ============================================================
+#  SkyMinions GUI 文案配置
+# ------------------------------------------------------------
+#  · 模板支持 MiniMessage 颜色标签: <gold> <green> <gray>
+#    <dark_gray> <yellow> <red> <aqua> <light_purple> <white> ...
+#  · {xxx} 为占位符, 打开 GUI 时由插件替换为实际数值
+#  · 【可选行】lore 行内若有"当前不适用"的占位符, 整行自动隐藏
+#    (例如未配置稀有掉落时, 信息卡的稀有掉落行不会显示)
+#  · 修改后执行 /minion reload 热重载即可生效
+#    (GUI 顶部标题随仆从实例创建, 重新放置仆从后更新)
+#  · 删除任意键可回退到内置默认文案
+# ============================================================
+
+# GUI 顶部标题。占位符: {name}=类型中文名
+title: "仆从 · {name}"
+
+# 信息书(槽3)。占位符: {name} {tier} {speed}=秒/次 {rate}=件/小时 {range}=范围
+#   {storage}=仓存件数 {slots}=已解锁格数 {total}=累计产出 {next}=距下次工作秒数
+#   可选: {rare}=稀有掉落物 {rare_chance}=几率%(仅配置了稀有掉落的类型提供)
+info:
+  title: "<gold>✦ {name} · 等级 {tier}</gold>"
+  lore:
+    - "<gray>状态: <green>● 工作中</green></gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>速度 <green>{speed} 秒/次</green></dark_gray>"
+    - "<dark_gray>产出 <green>≈ {rate} 件/小时</green></dark_gray>"
+    - "<dark_gray>范围 <aqua>{range}</aqua></dark_gray>"
+    - "<dark_gray>存储 <white>{storage} 件 / {slots} 格</white></dark_gray>"
+    - "<dark_gray>稀有掉落 <light_purple>{rare} ({rare_chance}%)</light_purple></dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>累计产出 <yellow>{total} 件</yellow></dark_gray>"
+    - "<dark_gray>下次工作 <green>{next} 秒后</green></dark_gray>"
+
+# 仆从头颅(槽4)。占位符: {name} {tier} {owner}=主人名 {skin}=皮肤名
+head:
+  title: "<yellow>{name} · 等级 {tier}</yellow>"
+  lore:
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>主人: <white>{owner}</white></dark_gray>"
+    - "<dark_gray>皮肤: <light_purple>{skin}</light_purple></dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<gray>放置于私岛自动采集资源</gray>"
+    - "<dark_gray>右键打开仓库 · 潜行右键拾取</dark_gray>"
+
+# 升级按钮(槽5) - 材料充足。占位符: {tier}=目标等级 {speed_now} {speed_next}=秒/次
+#   {m1}~{m3}=逐行材料对比(需求/已有, 行内自带颜色), 配方不足 3 种时多余行自动隐藏
+upgrade:
+  title: "<gold>升级到等级 {tier}</gold>"
+  lore:
+    - "<dark_gray>速度: <gray>{speed_now}秒</gray> <dark_gray>→</dark_gray> <green>{speed_next}秒</green> <dark_gray>/次</dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "{m1}"
+    - "{m2}"
+    - "{m3}"
+    - "{body}"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<yellow>点击升级 ▶</yellow>"
+
+# 升级按钮(槽5) - 材料不足。占位符同 upgrade
+upgrade-lack:
+  title: "<gold>升级到等级 {tier}</gold>"
+  lore:
+    - "<dark_gray>速度: <gray>{speed_now}秒</gray> <dark_gray>→</dark_gray> <green>{speed_next}秒</green> <dark_gray>/次</dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "{m1}"
+    - "{m2}"
+    - "{m3}"
+    - "{body}"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<gray>材料齐后点击升级</gray>"
+
+# 升级按钮(槽5) - 已满级。占位符: {tier}=最大等级
+upgrade-max:
+  title: "<gold>升级</gold>"
+  lore:
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<red>已达最高等级</red>"
+    - "<gray>最高等级（{tier}）</gray>"
+
+# 燃料槽状态卡(槽0, 按钮)。图标随状态: 无燃料=煤炭 / 限时生效中=烈焰棒 / 永久生效中=岩浆桶。
+# 交互: 手持有效燃料点击此槽立即生效(限时整组、永久仅1个); 空手点击查看燃料指引。占位符:
+#   可选: {perm}=永久加速百分比(仅佩戴永久燃料时提供)
+#         {left}=限时剩余秒 {timed}=限时加速百分比(仅限时燃料生效时提供)
+#         {nofuel}=空占位(仅完全无燃料时提供, 用于条件显示提示行)
+fuel:
+  title: "<gray>燃料槽</gray>"
+  lore:
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>永久加速 <green>+{perm}%</green></dark_gray>"
+    - "<dark_gray>限时剩余 <yellow>{left} 秒</yellow> <green>({timed}%)</green></dark_gray>"
+    - "<gray>{nofuel}当前无燃料（仆从仍会工作）</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>"
+    - "<dark_gray>限时: <gray>煤炭/岩浆桶/烈焰棒</gray></dark_gray>"
+    - "<dark_gray>永久: <gray>岩浆膏/荧石粉/日光传感器</gray></dark_gray>"
+    - "<dark_gray>空手点击查看燃料指引 · 手持燃料右键小人也可添加</dark_gray>"
+
+# 皮肤卡(槽7)。占位符: {current}=当前皮肤 {next}=下一个皮肤(仅有多皮肤时提供)
+skin:
+  title: "<light_purple>皮肤</light_purple>"
+  lore:
+    - "<dark_gray>当前: <light_purple>{current}</light_purple></dark_gray>"
+    - "<dark_gray>下一个: <gray>{next}</gray></dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<yellow>点击切换 ▶</yellow>"
+
+# 模块槽(槽47/48) - 未解锁。占位符: {n}=槽序号 {tier}=解锁等级
+module-locked:
+  title: "<dark_gray>模块槽 #{n}</dark_gray>"
+  lore:
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<red>✖ 未解锁</red>"
+    - "<gray>升级到等级 {tier} 解锁</gray>"
+
+# 模块槽 - 已装备。占位符: {name}=模块名 {desc}=模块描述
+module-equipped:
+  title: "<aqua>{name}</aqua>"
+  lore:
+    - "<gray>{desc}</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<green>● 已装备</green>"
+    - "<yellow>空手点击卸下 ▶</yellow>"
+
+# 模块槽 - 空。占位符: {n}=槽序号
+module-empty:
+  title: "<gray>模块槽 #{n}</gray>"
+  lore:
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>○ 空</dark_gray>"
+    - "<gray>手持模块物品点击装备</gray>"
+    - "<dark_gray>可用 /minion upgrade 获取</dark_gray>"
+
+# 收集全部(槽49)。占位符: {count}=仓存件数
+collect:
+  title: "<gold>收集全部</gold>"
+  lore:
+    - "<gray>将仓库所有物品转移到背包</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>当前仓存: <yellow>{count} 件</yellow></dark_gray>"
+    - "<yellow>点击收集 ▶</yellow>"
+
+# 自动售卖(槽50)。无占位符
+autosell-on:
+  title: "<green>自动售卖</green>"
+  lore:
+    - "<dark_gray>状态: <green>● 开启</green></dark_gray>"
+    - "<gray>仓库满时自动卖给商人</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<yellow>点击关闭</yellow>"
+
+autosell-off:
+  title: "<gray>自动售卖</gray>"
+  lore:
+    - "<dark_gray>状态: <red>○ 关闭</red></dark_gray>"
+    - "<gray>仓库满时停止工作</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<yellow>点击开启</yellow>"
+
+# 理想布局(槽51)。占位符: {side}=范围边长
+# 可选: {on}=开启状态行 / {off}=关闭状态行（仅圆石仆从提供，其余类型隐藏）
+layout:
+  title: "<aqua>理想布局</aqua>"
+  lore:
+    - "<dark_gray>工作范围 <white>{side}x{side}</white></dark_gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<green>{on}● 理想布局已开启（自动刷石中）</green>"
+    - "<gray>{off}○ 点击开启理想布局（自动摆水/岩浆）</gray>"
+    - "<gray>· 中心留空放置仆从</gray>"
+    - "<gray>· 四周填充可采集方块</gray>"
+    - "<gray>· 保证光照防刷怪</gray>"
+    - "<dark_gray>· 多仆从共享边界可最大化产出</dark_gray>"
+
+# 拾取仆从(槽52)。无占位符
+pickup:
+  title: "<red>拾取仆从</red>"
+  lore:
+    - "<gray>移除仆从并收回物品栏</gray>"
+    - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+    - "<dark_gray>仓库、模块与皮肤会保留</dark_gray>"
+    - "<dark_gray>潜行+右键仆从也可拾取</dark_gray>"
+    - "<yellow>点击拾取 ▶</yellow>"
+
+# 关闭(槽53)。无占位符
+close:
+  title: "<red>关闭</red>"
+
+# 未解锁的仓库锁定格。无占位符
+locked-slot:
+  title: "<dark_gray>锁定槽位</dark_gray>"
+  lore:
+    - "<gray>升级仆从以解锁更多存储</gray>"
+
+# ============================================================
+#  图鉴 GUI（/minions 打开，6 行 54 格）
+# ============================================================
+collection-gui:
+  title: "<aqua>仆从图鉴</aqua>"
+  close:
+    title: "<red>关闭</red>"
+  # 顶行分类过滤按钮。占位符: {sel}=选中标记 {name}=分类名
+  filter:
+    title: "<aqua>{sel}{name}</aqua>"
+  # 已解锁卡片。占位符: {name} {category} {tier}=最高等级 {max_tier} {placed}=已放置数
+  #   {produced}=总产出 {product}=产物名 {collected}=产物收集量
+  #   可选: {r1}~{r3}=下一级配方行（未满级时提供）
+  card:
+    title: "<gold>{name}</gold>"
+    lore:
+      - "<dark_gray>分类: <aqua>{category}</aqua></dark_gray>"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<dark_gray>已解锁等级 <yellow>{tier} / {max_tier}</yellow></dark_gray>"
+      - "<dark_gray>已放置 <white>{placed} 个</white></dark_gray>"
+      - "<dark_gray>总产出 <yellow>{produced} 件</yellow></dark_gray>"
+      - "<dark_gray>收集 <white>{product}</white> <yellow>{collected}</yellow></dark_gray>"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<gray>下一级配方:</gray>"
+      - "{r1}"
+      - "{r2}"
+      - "{r3}"
+      - "<yellow>点击查看配方详情 ▶</yellow>"
+  # 未解锁卡片（???）。占位符: {category} {product} {collected} {need}
+  locked:
+    title: "<dark_gray>???</dark_gray>"
+    lore:
+      - "<dark_gray>分类: <aqua>{category}</aqua></dark_gray>"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<red>✖ 未解锁</red>"
+      - "<dark_gray>收集 <white>{product}</white> <yellow>{collected} / {need}</yellow></dark_gray>"
+  prev:
+    title: "<green>◀ 上一页</green>"
+  next:
+    title: "<green>下一页 ▶</green>"
+  # 底行进度卡。占位符: {unlocked}=已解锁类型数 {total}=类型总数 {page} {pages}
+  progress:
+    title: "<gold>图鉴进度 {unlocked}/{total}</gold>"
+    lore:
+      - "<dark_gray>第 <white>{page} / {pages}</white> 页</dark_gray>"
+      - "<gray>收集资源解锁更多仆从类型</gray>"
+  # 点击卡片后的聊天栏配方标题。占位符: {name} {tier}
+  recipe-header:
+    title: "<gold>▼ {name} · 下一级配方</gold>"
+  recipe-none:
+    title: "<gray>尚未放置过该类型仆从，暂无升级记录</gray>"
+  recipe-max:
+    title: "<green>已达最高等级（{tier}）</green>"
+
+# ============================================================
+#  燃料选择 GUI（空手点击仆从燃料槽打开，3 行 27 格）
+# ============================================================
+fuel-gui:
+  title: "<gold>选择燃料</gold>"
+  empty:
+    title: "<gray>背包中没有可用燃料</gray>"
+  # 燃料选项。占位符: {name} {boost}=加速% {duration}=持续时间 {count}=背包数量
+  option:
+    title: "<yellow>{name}</yellow>"
+    lore:
+      - "<dark_gray>加速 <green>+{boost}%</green></dark_gray>"
+      - "<dark_gray>持续 <white>{duration}</white> / 个</dark_gray>"
+      - "<dark_gray>背包数量 <yellow>{count}</yellow></dark_gray>"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<yellow>点击安装全部 · 潜行安装 1 个</yellow>"
+  # 当前燃料状态卡。可选: {perm}=永久加速% {left}=限时剩余 {none}=无燃料时提供
+  status:
+    title: "<gray>当前燃料状态</gray>"
+    lore:
+      - "<dark_gray>永久加速 <green>+{perm}%</green></dark_gray>"
+      - "<dark_gray>限时剩余 <yellow>{left}</yellow></dark_gray>"
+      - "<gray>{none}当前无燃料</gray>"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<dark_gray>潜行点击卸下限时燃料</dark_gray>"

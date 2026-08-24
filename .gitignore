@@ -1,0 +1,39 @@
+# ============================
+# SkyMinions 项目 .gitignore
+# ============================
+
+# --- Maven 构建产物 ---
+target/
+
+# --- craft-engine 子模块（整体排除，独立仓库管理） ---
+craft-engine/
+
+# --- IDE 配置 ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.swp
+*~
+
+# --- OS 元数据 ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- 日志 ---
+*.log
+logs/
+
+# --- Qoder 运行时 ---
+.qoder/better-harness/
+
+# --- 环境变量 / 敏感文件 ---
+*.env
+*.env.local

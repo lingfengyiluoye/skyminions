@@ -1,0 +1,89 @@
+# SkyMinions 文案配置（messages.yml）
+# 颜色使用 MiniMessage 格式：<red> <green> <gold> <yellow> <aqua> <light_purple> <gray> <dark_gray> <white>
+# 样式：<bold> <italic> <underlined> <strikethrough> <obfuscated>
+# 占位符：{0} {1} {2} 会被运行时参数替换，参数内容自动转义安全。
+# 多行内容用 \n 分隔。修改后 /minion reload 热重载，或重启生效。
+
+# ============ 权限 / 放置 / 归属 ============
+# 明确权限要求与放置归属
+no-permission: "<red>✖ 你没有权限使用该仆从</red>"
+must-place-on-island: "<red>✖ 仆从只能放置在 <gold>你的空岛</gold> 内</red>"
+limit-reached: "<red>✖ 仆从数量已达上限</red>\n<gray>升级权限 <gold>hcs.minions.limit.\\<数量></gold> 可增加上限</gray>"
+not-your-minion: "<red>✖ 无法操作该仆从</red>\n<gray>仅限仆从主人或所在空岛的团队成员使用</gray>"
+player-only: "<red>✖ 该命令仅玩家可执行</red>"
+unknown-command: "<red>✖ 未知子命令，输入 <gold>/minion</gold> 查看帮助</red>"
+
+# ============ 燃料 ============
+# 强调价值（加速）与操作结果
+permanent-fuel-equipped: "<green>✔ 已装备<bold>永久燃料</bold></green>\n<gray>持续加速 <yellow>+{0}%</yellow>，不随时间衰减</gray>"
+fuel-added: "<green>✔ 已补充燃料</green>\n<gray>加速 <yellow>+{0}%</yellow>，燃料已加入储备</gray>"
+
+# 燃料指引（空手点击 GUI 燃料槽时展示）
+fuel-help-header: "<gold><bold>▼ 燃料</bold></gold>"
+fuel-status-permanent: "<gray>当前: <green>永久加速 +{0}%</green>（不衰减）</gray>"
+fuel-status-timed: "<gray>当前: <yellow>限时加速中，剩余 {0} 秒</yellow></gray>"
+fuel-status-none: "<gray>当前: <red>无燃料</red>（仆从仍会工作，燃料只提供加速）</gray>"
+fuel-help-tip: "<yellow>⚡ 手持燃料点击左上角燃料槽即可添加，立即生效</yellow>\n<dark_gray>限时燃料整组生效；也可手持燃料直接右键小人</dark_gray>"
+fuel-help-line: "<dark_gray>· <white>{0}</white> <green>+{1}%</green> <gray>({2})</gray></dark_gray>"
+fuel-unequipped: "<green>✔ 已卸下限时燃料</green>"
+fuel-unequip-empty: "<gray>当前没有限时燃料可卸下</gray>"
+
+# ============ 升级 / 模块 / 皮肤 ============
+max-level: "<red>✖ 仆从已满级，无法继续升级</red>"
+storage-empty: "<gray>仓库是空的，仆从还没有收获</gray>"
+collected-all: "<green>✔ 已取出全部产物</green>"
+upgrade-slot-locked: "<red>✖ 该模块槽尚未解锁</red>\n<gray>提升到对应 <gold>等级</gold> 后可解锁</gray>"
+upgrade-slot-occupied: "<red>✖ 该模块槽已被占用</red>\n<gray>先卸下当前模块再装备新的</gray>"
+upgrade-slot-empty: "<gray>该模块槽是空的</gray>"
+auto-sell-toggled: "<green>✔ 自动出售已{0}</green>"
+upgrade-equipped: "<green>✔ 已装备模块</green>\n<aqua>{0}</aqua>"
+upgrade-removed: "<green>✔ 已卸下模块</green>\n<aqua>{0}</aqua> 已返还到背包"
+skin-changed: "<light_purple>✔ 皮肤已切换</light_purple>\n<light_purple>{0}</light_purple>"
+upgrade-failed: "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>"
+upgrade-missing-body: "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>"
+upgrade-success: "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>"
+
+# ============ 命令 ============
+usage: "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion collection</white> <gray>- 资源累计</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>"
+usage-give: "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>"
+usage-upgrade: "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖)</dark_gray>"
+level-must-be-number: "<red>✖ 等级必须是数字</red>"
+unknown-type: "<red>✖ 未知类型: {0}</red>"
+unknown-upgrade: "<red>✖ 未知模块: {0}</red>"
+given-minion: "<green>✔ 已发放</green> <gold>{0}</gold> <white>等级 {1}</white>\n<gray>右键方块放置仆从</gray>"
+given-upgrade: "<green>✔ 已发放模块</green> <aqua>{0}</aqua>\n<gray>手持模块点击仆从的模块槽装备</gray>"
+total-minions: "<yellow>当前在线仆从总数: {0}</yellow>"
+config-reloaded: "<green>✔ 配置与文案已重新加载</green>"
+purged: "<green>✔ 已清理 {0} 个残留仆从实体</green>"
+available-skins: "<gray>可用皮肤</gray><white>: {0}</white>"
+skin-tip: "<gray>在仆从 GUI 中点击 <light_purple>皮肤</light_purple> 按钮切换</gray>"
+
+# ============ 资源累计 ============
+collection-empty: "<gray>暂无资源累计记录</gray>\n<dark_gray>仆从产出后会自动记录</dark_gray>"
+collection-header: "<aqua><bold>▼ 资源累计</bold></aqua>"
+collection-entry: "<white>{0}</white> <gray>x</gray> <yellow>{1}</yellow>"
+collection-next: "<dark_gray>→ 下一里程碑: {0} / {1}</dark_gray>"
+collection-complete: "<green>✓ 全部里程碑已达成</green>"
+collection-slot-bonus: "<green>✔ 里程碑加成: 仆从槽位 +{0}</green>"
+
+# 里程碑达成（milestone-slot-bonus 作为尾注拼接到 milestone-reached 之后）
+milestone-reached: "<green>✔ 资源累计里程碑达成！</green>\n<white>{0}</white> <gray>累计</gray> <yellow>{1}</yellow>\n<gray>奖励 <gold>{2} 金币</gold></gray>"
+milestone-slot-bonus: "<gray>，仆从槽位 <yellow>+1</yellow></gray>"
+
+# 稀有掉落
+rare-drop: "<gold>✦ 你的{0}获得了稀有掉落</gold> <light_purple>{1}</light_purple>"
+
+# ============ 理想布局 ============
+layout-header: "<aqua><bold>▼ 理想布局</bold></aqua>"
+layout-range: "<white>工作范围</white><gray>: <yellow>{0}x{0}</yellow>（中心放置仆从）</gray>"
+layout-tip-center: "<gray>· 中心留空，四周填充可采集方块</gray>"
+layout-tip-light: "<gray>· 保证光照 ≥ 8，防止刷怪干扰</gray>"
+layout-tip-shared: "<gray>· 多个仆从共享边界，可最大化产出</gray>"
+layout-enabled: "<green>✔ 理想布局已开启</green>\n<gray>仆从将自动摆放水与岩浆搭建刷石机</gray>"
+layout-disabled: "<gray>理想布局已关闭，摆放的水与岩浆已还原</gray>"
+
+# ============ 收集解锁 ============
+unlock-required: "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>"
+
+# ============ 离线收益 ============
+offline-reward: "<green>✔ 离线收益已到账</green>\n<gray>仆从为你产出了 <yellow>{0}</yellow> 件物品</gray>\n<gray>（离线约 <white>{1}</white> 分钟）</gray>"

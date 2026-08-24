@@ -1,0 +1,147 @@
+package com.hcs.minions.gui;
+
+import com.hcs.minions.model.Minion;
+import com.hcs.minions.service.FuelService;
+import com.hcs.minions.util.GuiText;
+import com.hcs.minions.util.MaterialNames;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 燃料选择 GUI（对齐文档：点燃料槽 → 打开选择界面，从背包装燃料）。
+ *
+ * <pre>
+ * 27 格：10..16 列出背包中拥有的燃料（图标 + 加速% + 持续时间 + 背包数量）
+ *        22 当前燃料状态卡 | 26 关闭
+ * 交互：左键安装该燃料全部库存（限时按数量累计时长/永久仅 1 个），潜行左键仅安装 1 个。
+ * </pre>
+ */
+public final class FuelGui {
+
+    /** 燃料选择界面容器：携带所属仆从 id。 */
+    public record FuelHolder(UUID minionId) implements InventoryHolder {
+        @Override
+        public @NotNull Inventory getInventory() {
+            return null;
+        }
+    }
+
+    /** 燃料选项槽（中间行）。 */
+    public static final int[] OPTION_SLOTS = {10, 11, 12, 13, 14, 15, 16};
+    public static final int STATUS_SLOT = 22;
+    public static final int CLOSE_SLOT = 26;
+
+    private FuelGui() {
+    }
+
+    /** 打开燃料选择界面：只列出玩家背包中实际拥有的燃料。 */
+    public static void open(Player player, Minion minion) {
+        Inventory inv = Bukkit.createInventory(new FuelHolder(minion.id()), 27,
+                GuiText.title("fuel-gui.title"));
+
+        Map<Material, Integer> owned = scanInventory(player);
+        int slotIndex = 0;
+        for (Map.Entry<Material, FuelService.FuelValue> e : FuelService.all().entrySet()) {
+            int count = owned.getOrDefault(e.getKey(), 0);
+            if (count <= 0 || slotIndex >= OPTION_SLOTS.length) {
+                continue;
+            }
+            inv.setItem(OPTION_SLOTS[slotIndex++], optionItem(e.getKey(), e.getValue(), count));
+        }
+        if (slotIndex == 0) {
+            inv.setItem(OPTION_SLOTS[3], named(Material.GRAY_STAINED_GLASS_PANE,
+                    GuiText.title("fuel-gui.empty.title")));
+        }
+        inv.setItem(STATUS_SLOT, statusItem(minion));
+        inv.setItem(CLOSE_SLOT, named(Material.BARRIER, GuiText.title("collection-gui.close.title")));
+        player.openInventory(inv);
+    }
+
+    /** 扫描玩家背包，聚合每种燃料的数量。 */
+    private static Map<Material, Integer> scanInventory(Player player) {
+        Map<Material, Integer> counts = new LinkedHashMap<>();
+        for (ItemStack item : player.getInventory().getStorageContents()) {
+            if (item != null && FuelService.isFuel(item.getType())) {
+                counts.merge(item.getType(), item.getAmount(), Integer::sum);
+            }
+        }
+        return counts;
+    }
+
+    /** 燃料选项卡：物品 + 加速% + 持续时间 + 背包数量。 */
+    private static ItemStack optionItem(Material material, FuelService.FuelValue fv, int count) {
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("name", MaterialNames.of(material));
+        v.put("boost", String.valueOf((int) ((fv.boost() - 1) * 100)));
+        v.put("duration", fv.permanent() ? "永久" : fmtDuration(fv.durationTicks()));
+        v.put("count", String.valueOf(count));
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        Component title = GuiText.title("fuel-gui.option.title", v)
+                .decoration(TextDecoration.ITALIC, false);
+        meta.displayName(title);
+        List<Component> lore = GuiText.lore("fuel-gui.option.lore", v);
+        meta.lore(lore.stream().map(c -> c.decoration(TextDecoration.ITALIC, false)).toList());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** 当前燃料状态卡（剩余时间/永久加速/无燃料）。 */
+    public static ItemStack statusItem(Minion minion) {
+        Map<String, String> v = new LinkedHashMap<>();
+        if (minion.permanentBoost() > 1.0) {
+            v.put("perm", String.valueOf((int) ((minion.permanentBoost() - 1) * 100)));
+        }
+        if (minion.fuelTicks() > 0) {
+            v.put("left", fmtDuration(minion.fuelTicks()));
+        }
+        if (minion.permanentBoost() <= 1.0 && minion.fuelTicks() <= 0) {
+            v.put("none", "");
+        }
+        Material icon = minion.permanentBoost() > 1.0 ? Material.LAVA_BUCKET
+                : minion.fuelTicks() > 0 ? Material.BLAZE_ROD : Material.COAL;
+        return named(icon, GuiText.title("fuel-gui.status.title", v),
+                GuiText.lore("fuel-gui.status.lore", v));
+    }
+
+    private static String fmtDuration(long ticks) {
+        long seconds = ticks / 20;
+        if (seconds >= 3600) {
+            long h = seconds / 3600;
+            long m = (seconds % 3600) / 60;
+            return m > 0 ? h + " 小时 " + m + " 分钟" : h + " 小时";
+        }
+        if (seconds >= 60) {
+            return (seconds / 60) + " 分钟";
+        }
+        return seconds + " 秒";
+    }
+
+    private static ItemStack named(Material material, Component name) {
+        return named(material, name, null);
+    }
+
+    private static ItemStack named(Material material, Component name, List<Component> lore) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false));
+        if (lore != null && !lore.isEmpty()) {
+            meta.lore(lore.stream().map(c -> c.decoration(TextDecoration.ITALIC, false)).toList());
+        }
+        item.setItemMeta(meta);
+        return item;
+    }
+}
