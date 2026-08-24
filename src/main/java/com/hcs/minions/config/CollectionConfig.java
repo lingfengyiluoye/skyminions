@@ -7,18 +7,21 @@ import java.util.Set;
  *
  * <p>每种资源独立计数：累计量每跨过一个阈值即达成一个里程碑，
  * 奖励金币（第 n 个 = {@code coinsBase * n}）；命中 {@code slotMilestones}
- * 的里程碑额外奖励仆从槽位 +1（多种资源可叠加）。</p>
+ * 的里程碑额外奖励仆从槽位 +1（多种资源可叠加，但总量受
+ * {@code maxBonusSlots} 硬上限钳制，防止多资源叠加把经济玩坏）。</p>
  *
  * @param enabled         是否启用里程碑奖励（关闭时仅记录累计量，用于展示）
  * @param milestones      严格递增的里程碑阈值
  * @param coinsBase       金币奖励基数（第 n 个里程碑奖励 coinsBase * n）
  * @param slotMilestones  达成这些序号（1-based）的里程碑时各奖励仆从槽位 +1
+ * @param maxBonusSlots   里程碑槽位加成的硬上限（多资源叠加后的总加成不超过此值）
  */
 public record CollectionConfig(
         boolean enabled,
         long[] milestones,
         long coinsBase,
-        Set<Integer> slotMilestones
+        Set<Integer> slotMilestones,
+        int maxBonusSlots
 ) {
 
     private static final long[] DEFAULT_MILESTONES = {50, 100, 250, 500, 1000, 2500, 5000, 10000};
@@ -28,6 +31,7 @@ public record CollectionConfig(
                 ? DEFAULT_MILESTONES.clone()
                 : milestones.clone();
         slotMilestones = Set.copyOf(slotMilestones == null ? Set.of() : slotMilestones);
+        maxBonusSlots = Math.max(0, maxBonusSlots);
     }
 
     @Override

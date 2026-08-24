@@ -42,6 +42,8 @@ public final class Messages {
 
     public static Component NO_PERMISSION;
     public static Component MUST_PLACE_ON_ISLAND;
+    public static Component LOCATION_OCCUPIED;
+    public static Component MINION_TOO_CLOSE;
     public static Component LIMIT_REACHED;
     public static Component NOT_YOUR_MINION;
     public static Component PLAYER_ONLY;
@@ -61,9 +63,6 @@ public final class Messages {
     public static Component LAYOUT_TIP_CENTER;
     public static Component LAYOUT_TIP_LIGHT;
     public static Component LAYOUT_TIP_SHARED;
-    public static Component COLLECTION_EMPTY;
-    public static Component COLLECTION_HEADER;
-    public static Component COLLECTION_COMPLETE;
     public static Component FUEL_HELP_HEADER;
     public static Component FUEL_HELP_TIP;
     public static Component FUEL_STATUS_NONE;
@@ -81,6 +80,7 @@ public final class Messages {
         DEFAULTS.put("no-permission", "<red>✖ 你没有权限使用该仆从</red>");
         DEFAULTS.put("must-place-on-island", "<red>✖ 仆从只能放置在 <gold>你的空岛</gold> 内</red>");
         DEFAULTS.put("limit-reached", "<red>✖ 仆从数量已达上限</red>\n<gray>升级权限 <gold>hcs.minions.limit.\\<数量></gold> 可增加上限</gray>");
+        DEFAULTS.put("minion-too-close", "<red>✖ 离其他仆从太近了</red>\n<gray>两个仆从的工作区不能重叠，请换个位置</gray>");
         DEFAULTS.put("not-your-minion", "<red>✖ 无法操作该仆从</red>\n<gray>仅限仆从主人或所在空岛的团队成员使用</gray>");
         DEFAULTS.put("player-only", "<red>✖ 该命令仅玩家可执行</red>");
         DEFAULTS.put("unknown-command", "<red>✖ 未知子命令，输入 <gold>/minion</gold> 查看帮助</red>");
@@ -90,7 +90,7 @@ public final class Messages {
         DEFAULTS.put("fuel-status-permanent", "<gray>当前: <green>永久加速 +{0}%</green>（不衰减）</gray>");
         DEFAULTS.put("fuel-status-timed", "<gray>当前: <yellow>限时加速中，剩余 {0} 秒</yellow></gray>");
         DEFAULTS.put("fuel-status-none", "<gray>当前: <red>无燃料</red>（仆从仍会工作，燃料只提供加速）</gray>");
-        DEFAULTS.put("fuel-help-tip", "<yellow>⚡ 手持燃料点击左上角燃料槽即可添加，立即生效</yellow>\n<dark_gray>限时燃料整组生效；也可手持燃料直接右键小人</dark_gray>");
+        DEFAULTS.put("fuel-help-tip", "<yellow>⚡ 手持燃料点击左上角燃料槽即可添加，立即生效</yellow>\n<dark_gray>手持燃料右键小人每次消耗 1 个；永久燃料不可卸下</dark_gray>");
         DEFAULTS.put("fuel-help-line", "<dark_gray>· <white>{0}</white> <green>+{1}%</green> <gray>({2})</gray></dark_gray>");
         DEFAULTS.put("fuel-unequipped", "<green>✔ 已卸下限时燃料</green>");
         DEFAULTS.put("fuel-unequip-empty", "<gray>当前没有限时燃料可卸下</gray>");
@@ -107,7 +107,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>");
         DEFAULTS.put("upgrade-missing-body", "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>");
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
-        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion collection</white> <gray>- 资源累计</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>");
+        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
         DEFAULTS.put("usage-give", "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>");
         DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖)</dark_gray>");
         DEFAULTS.put("level-must-be-number", "<red>✖ 等级必须是数字</red>");
@@ -120,11 +120,8 @@ public final class Messages {
         DEFAULTS.put("purged", "<green>✔ 已清理 {0} 个残留仆从实体</green>");
         DEFAULTS.put("available-skins", "<gray>可用皮肤</gray><white>: {0}</white>");
         DEFAULTS.put("skin-tip", "<gray>在仆从 GUI 中点击 <light_purple>皮肤</light_purple> 按钮切换</gray>");
-        DEFAULTS.put("collection-empty", "<gray>暂无资源累计记录</gray>\n<dark_gray>仆从产出后会自动记录</dark_gray>");
-        DEFAULTS.put("collection-header", "<aqua><bold>▼ 资源累计</bold></aqua>");
         DEFAULTS.put("collection-entry", "<white>{0}</white> <gray>x</gray> <yellow>{1}</yellow>");
         DEFAULTS.put("collection-next", "<dark_gray>→ 下一里程碑: {0} / {1}</dark_gray>");
-        DEFAULTS.put("collection-complete", "<green>✓ 全部里程碑已达成</green>");
         DEFAULTS.put("collection-slot-bonus", "<green>✔ 里程碑加成: 仆从槽位 +{0}</green>");
         DEFAULTS.put("milestone-reached", "<green>✔ 资源累计里程碑达成！</green>\n<white>{0}</white> <gray>累计</gray> <yellow>{1}</yellow>\n<gray>奖励 <gold>{2} 金币</gold></gray>");
         DEFAULTS.put("milestone-slot-bonus", "<gray>，仆从槽位 <yellow>+1</yellow></gray>");
@@ -137,7 +134,6 @@ public final class Messages {
         DEFAULTS.put("layout-enabled", "<green>✔ 理想布局已开启</green>\n<gray>仆从将自动摆放水与岩浆搭建刷石机</gray>");
         DEFAULTS.put("layout-disabled", "<gray>理想布局已关闭，摆放的水与岩浆已还原</gray>");
         DEFAULTS.put("unlock-required", "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>");
-        DEFAULTS.put("offline-reward", "<green>✔ 离线收益已到账</green>\n<gray>仆从为你产出了 <yellow>{0}</yellow> 件物品</gray>\n<gray>（离线约 <white>{1}</white> 分钟）</gray>");
     }
 
     /** 从 messages.yml 加载文案；文件不存在则写出默认文件。可重复调用（热重载）。 */
@@ -161,6 +157,8 @@ public final class Messages {
     private static void assignStatics() {
         NO_PERMISSION = render("no-permission");
         MUST_PLACE_ON_ISLAND = render("must-place-on-island");
+        LOCATION_OCCUPIED = render("location-occupied");
+        MINION_TOO_CLOSE = render("minion-too-close");
         LIMIT_REACHED = render("limit-reached");
         NOT_YOUR_MINION = render("not-your-minion");
         PLAYER_ONLY = render("player-only");
@@ -180,9 +178,6 @@ public final class Messages {
         LAYOUT_TIP_CENTER = render("layout-tip-center");
         LAYOUT_TIP_LIGHT = render("layout-tip-light");
         LAYOUT_TIP_SHARED = render("layout-tip-shared");
-        COLLECTION_EMPTY = render("collection-empty");
-        COLLECTION_HEADER = render("collection-header");
-        COLLECTION_COMPLETE = render("collection-complete");
         FUEL_HELP_HEADER = render("fuel-help-header");
         FUEL_HELP_TIP = render("fuel-help-tip");
         FUEL_STATUS_NONE = render("fuel-status-none");
@@ -316,10 +311,6 @@ public final class Messages {
 
     public static Component rareDrop(String minionName, String itemName) {
         return render("rare-drop", minionName, itemName);
-    }
-
-    public static Component offlineReward(long amount, long minutes) {
-        return render("offline-reward", amount, minutes);
     }
 
     // ------------------------------------------------------------------

@@ -18,6 +18,7 @@ import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
 import com.hcs.minions.work.WorkStrategyRegistry;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -42,8 +43,6 @@ import java.util.concurrent.TimeUnit;
  * 盔甲架小人按需生成、随区块卸载自愈（stand.isValid()）。
  */
 public final class MinionManager {
-
-    private static final double PLAYER_SCAN_RADIUS = 48.0;
 
     private final JavaPlugin plugin;
     private final ConfigProvider config;
@@ -155,7 +154,15 @@ public final class MinionManager {
         }
         if (!tasks.isEmpty()) {
             CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
-                    .thenRun(() -> repository.flushSnapshots(snapshots));
+                    .orTimeout(10, TimeUnit.SECONDS)
+                    .whenComplete((v, t) -> {
+                        // 单个 region 任务挂起（区块异常等）不应阻塞整批落库：
+                        // 超时后先冲刷已收集的快照，未被认领的脏标记下轮重试
+                        if (t != null) {
+                            Logs.warn("快照收集超时，已冲刷 {} 份已就绪快照，其余下轮重试", snapshots.size());
+                        }
+                        repository.flushSnapshots(snapshots);
+                    });
         }
     }
 
@@ -225,7 +232,9 @@ public final class MinionManager {
         if (center == null) {
             return;
         }
-        if (world.getNearbyPlayers(center, PLAYER_SCAN_RADIUS).isEmpty()) {
+        // 玩家活动检查：半径配置化，0 = 永不休眠
+        double scanRadius = config.get().playerScanRadius();
+        if (scanRadius > 0 && world.getNearbyPlayers(center, scanRadius).isEmpty()) {
             return;
         }
 
@@ -245,8 +254,16 @@ public final class MinionManager {
 
         // GUI 正被观看时每秒刷新状态卡（燃料剩余秒数/下次工作倒计时/仓存等实时跳动）
         if (minion.shouldRefreshGuiView(nowTick)) {
-            minion.refresh(config.get().type(minion.type()));
+            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
             minion.markGuiRefreshed(nowTick);
+        }
+
+        // 满仓停工（对齐 Hypixel）：仓库已满且无自动售卖手段则停产，头顶展示告警；
+        // 玩家取货/开售卖后下轮自动恢复
+        boolean halted = minion.isStorageFull() && !shouldAutoSell(minion);
+        entities.refreshStatus(minion, halted);
+        if (halted) {
+            return;
         }
 
         if (!minion.canWorkNow(nowTick) || !skyblock.canWorkAt(minion)) {
@@ -288,7 +305,7 @@ public final class MinionManager {
 
         double efficiency = minion.efficiency(cfg);
         double boost = minion.fuelBoost();
-        int cd = Math.max(1, (int) Math.round(strategy.cooldownTicks() / (efficiency * boost)));
+        int cd = Math.max(1, (int) Math.round(cfg.cooldownTicksAt(minion.level()) / (efficiency * boost)));
         minion.scheduleNext(Bukkit.getCurrentTick(), cd);
         entities.swing(minion);
 
@@ -297,9 +314,14 @@ public final class MinionManager {
         // 专属稀有掉落（在模块链之后 roll，避免被熔炼/压缩转换）：对齐 Hypixel 各仆从的专属稀有掉落
         if (cfg.hasRareDrop() && ThreadLocalRandom.current().nextDouble() < cfg.rareDropChance()) {
             drops.add(new ItemStack(cfg.rareDrop(), 1));
-            Player ownerOnline = Bukkit.getPlayer(minion.owner());
-            if (ownerOnline != null) {
-                ownerOnline.sendMessage(Messages.rareDrop(cfg.displayName(), MaterialNames.of(cfg.rareDrop())));
+            Component rare = Messages.rareDrop(cfg.displayName(), MaterialNames.of(cfg.rareDrop()));
+            if (config.get().rareDropBroadcast()) {
+                Bukkit.getServer().broadcast(rare); // 全服广播（Hypixel 兴奋点，可配为仅通知主人）
+            } else {
+                Player ownerOnline = Bukkit.getPlayer(minion.owner());
+                if (ownerOnline != null) {
+                    ownerOnline.sendMessage(rare);
+                }
             }
             if (config.get().debug()) {
                 Logs.info("调试: 仆从 {} 触发稀有掉落 {}", minion.type().key(), cfg.rareDrop());
@@ -365,8 +387,15 @@ public final class MinionManager {
         if (countByOwner(minion.owner()) >= cap) {
             return false;
         }
+        // 最小间距：防止两个仆从工作区重叠（监听器预检查给出专属提示，此处兜底）
+        if (tooCloseToOtherMinion(minion.location())) {
+            return false;
+        }
+        // 坐标占位校验：同一格禁止重复放置（监听器预检查给出专属提示，此处 putIfAbsent 兜底并发竞态）
+        if (byLocation.putIfAbsent(minion.location(), minion.id()) != null) {
+            return false;
+        }
         minions.put(minion.id(), minion);
-        byLocation.put(minion.location(), minion.id());
         ownerCount.merge(minion.owner(), 1, Integer::sum);
         entities.spawn(minion);
         repository.save(minion);
@@ -377,6 +406,34 @@ public final class MinionManager {
                 cfg.radiusFor(minion.level()), minion.fuelTicks());
         Bukkit.getPluginManager().callEvent(new MinionPlacedEvent(minion, player));
         return true;
+    }
+
+    /** 按坐标反查仆从（放置前占位校验用）。 */
+    public Minion minionAt(BlockLocation location) {
+        UUID id = byLocation.get(location);
+        return id == null ? null : minions.get(id);
+    }
+
+    /** 最小间距校验：与同世界其他仆从的水平切比雪夫距离需 ≥ min-placement-distance（0 = 不限制）。 */
+    public boolean tooCloseToOtherMinion(BlockLocation location) {
+        int minDistance = config.get().minPlacementDistance();
+        if (minDistance <= 0) {
+            return false;
+        }
+        for (Minion other : minions.values()) {
+            BlockLocation loc = other.location();
+            if (!loc.world().equals(location.world())) {
+                continue;
+            }
+            int dx = Math.abs(loc.x() - location.x());
+            if (dx >= minDistance) {
+                continue;
+            }
+            if (Math.max(dx, Math.abs(loc.z() - location.z())) < minDistance) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Minion remove(Minion minion, Player player) {
@@ -391,7 +448,7 @@ public final class MinionManager {
 
     /** 右键小人打开仆从 GUI（仓库内联 + 燃料/升级/收集/拾取）。 */
     public void openGui(Player player, Minion minion) {
-        minion.refresh(config.get().type(minion.type()));
+        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         player.openInventory(minion.storage());
     }
 

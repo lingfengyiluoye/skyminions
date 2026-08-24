@@ -22,6 +22,8 @@ import java.util.Set;
  * @param baseRadius      固定工作半径（2 即 5x5）
  * @param harvestCap      模拟采集单次收获上限（仅统计型策略生效：范围内可采数量越多
  *                        产量越高但不破坏方块；真实挖掘型策略忽略此值）
+ * @param cooldownPerLevel 分等级动作间隔表（tick，对齐 Hypixel 原版逐级提速）：下标 = 等级-1，
+ *                        超出表长的等级取最后一项；空表 = 所有等级统一用 {@code cooldownTicks}
  * @param rareDrop        专属稀有掉落（可空，对齐 Hypixel 各仆从的专属稀有掉落玩法）
  * @param rareDropChance  稀有掉落概率（0~1，0 = 关闭）
  * @param unlockAmount    收集解锁阈值：该类型产物（product）累计收集达到此量才解锁使用；
@@ -41,6 +43,7 @@ public record MinionTypeConfig(
         double upgradeCostGrowth,
         int baseRadius,
         int harvestCap,
+        int[] cooldownPerLevel,
         Set<Material> targets,
         Material rareDrop,
         double rareDropChance,
@@ -56,6 +59,9 @@ public record MinionTypeConfig(
         }
         if (harvestCap < 1) {
             harvestCap = 1;
+        }
+        if (cooldownPerLevel == null) {
+            cooldownPerLevel = new int[0];
         }
         if (rareDropChance < 0) {
             rareDropChance = 0;
@@ -77,6 +83,15 @@ public record MinionTypeConfig(
 
     public double efficiencyAt(int level) {
         return baseEfficiency + efficiencyPerLevel * Math.max(0, level - 1);
+    }
+
+    /** 指定等级的动作间隔（tick）：配置了分等级表则查表（越界取末项），否则全等级统一 cooldownTicks。 */
+    public int cooldownTicksAt(int level) {
+        if (cooldownPerLevel.length == 0) {
+            return cooldownTicks;
+        }
+        int idx = Math.min(Math.max(level, 1), cooldownPerLevel.length) - 1;
+        return cooldownPerLevel[idx];
     }
 
     /**

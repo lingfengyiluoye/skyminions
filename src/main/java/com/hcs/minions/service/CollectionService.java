@@ -199,7 +199,7 @@ public final class CollectionService {
         return 0;
     }
 
-    /** 里程碑奖励的仆从槽位加成（多种资源可叠加）。 */
+    /** 里程碑奖励的仆从槽位加成（多种资源可叠加，总量受 max-bonus-slots 硬上限钳制）。 */
     public int bonusSlots(UUID owner) {
         if (!cfg.enabled()) {
             return 0;
@@ -212,7 +212,7 @@ public final class CollectionService {
         for (int max : cm.values()) {
             total += cfg.bonusSlotsFor(max);
         }
-        return (int) Math.min(total, Integer.MAX_VALUE);
+        return (int) Math.min(total, cfg.maxBonusSlots());
     }
 
     /** 落盘 collection.yml。 */

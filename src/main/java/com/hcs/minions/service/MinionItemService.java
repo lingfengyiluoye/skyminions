@@ -77,27 +77,12 @@ public final class MinionItemService {
         if (meta instanceof org.bukkit.inventory.meta.SkullMeta skullMeta) {
             org.bukkit.profile.PlayerProfile profile = org.bukkit.Bukkit.createPlayerProfile(
                     UUID.nameUUIDFromBytes(texture.getBytes(java.nio.charset.StandardCharsets.UTF_8)), "Minion");
-            java.net.URL url = skinUrl(texture);
+            java.net.URL url = com.hcs.minions.util.Textures.skinUrl(texture);
             if (url != null) {
                 profile.getTextures().setSkin(url);
             }
             skullMeta.setOwnerProfile(profile);
             item.setItemMeta(skullMeta);
-        }
-    }
-
-    private java.net.URL skinUrl(String texture) {
-        try {
-            String json = new String(java.util.Base64.getDecoder().decode(texture), java.nio.charset.StandardCharsets.UTF_8);
-            int i = json.indexOf("\"url\":\"");
-            if (i < 0) {
-                return null;
-            }
-            i += "\"url\":\"".length();
-            int j = json.indexOf('"', i);
-            return j < 0 ? null : java.net.URI.create(json.substring(i, j)).toURL();
-        } catch (Exception e) {
-            return null;
         }
     }
 

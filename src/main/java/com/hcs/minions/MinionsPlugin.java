@@ -11,9 +11,9 @@ import com.hcs.minions.gui.CollectionGui;
 import com.hcs.minions.gui.CollectionGuiListener;
 import com.hcs.minions.gui.FuelGuiListener;
 import com.hcs.minions.gui.MinionGUIListener;
+import com.hcs.minions.gui.UpgradeCraftGuiListener;
 import com.hcs.minions.listener.MinionInteractionListener;
-import com.hcs.minions.listener.PlayerJoinListener;
-import com.hcs.minions.model.Minion;
+import com.hcs.minions.listener.SlayerDeathListener;
 import com.hcs.minions.model.MinionType;
 import com.hcs.minions.repository.MinionRepository;
 import com.hcs.minions.repository.RepositoryFactory;
@@ -23,7 +23,6 @@ import com.hcs.minions.service.EconomyService;
 import com.hcs.minions.service.MinionEntityService;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
-import com.hcs.minions.service.OfflineRewardService;
 import com.hcs.minions.service.PermissionService;
 import com.hcs.minions.service.SellService;
 import com.hcs.minions.service.hook.SkyblockHook;
@@ -106,22 +105,19 @@ public final class MinionsPlugin extends JavaPlugin {
         MinionManager manager = new MinionManager(this, configProvider, repository, strategies, searcher, entities, sell, skyblock, permissions, async, upgrades, collection);
         registry.setManager(manager);
 
-        OfflineRewardService offline = new OfflineRewardService(config, repository);
-        registry.setOffline(offline);
-
         MinionItemService itemService = new MinionItemService(this, config);
         registry.setItemService(itemService);
-
-        Minion.requirePreviousBody = config.upgradeRequirePreviousBody(); // 升级本体开关：GUI 渲染与升级校验共用
 
         CollectionGui collectionGui = new CollectionGui(config, manager, collection, permissions);
         getServer().getPluginManager().registerEvents(new MinionGUIListener(manager, itemService, entities, config, upgrades, skyblock), this);
         getServer().getPluginManager().registerEvents(new MinionInteractionListener(manager, itemService, entities, permissions, collection, skyblock, config), this);
         getServer().getPluginManager().registerEvents(new CollectionGuiListener(collectionGui), this);
         getServer().getPluginManager().registerEvents(new FuelGuiListener(manager, config), this);
-        getServer().getPluginManager().registerEvents(new PlayerJoinListener(offline, manager), this);
+        getServer().getPluginManager().registerEvents(
+                new UpgradeCraftGuiListener(this, manager, itemService, config, skyblock), this);
+        getServer().getPluginManager().registerEvents(new SlayerDeathListener(), this);
 
-        getServer().getCommandMap().register("skyminions", new MinionCommand(itemService, manager, upgrades, configProvider, collection, this));
+        getServer().getCommandMap().register("skyminions", new MinionCommand(itemService, manager, upgrades, configProvider, this));
         getServer().getCommandMap().register("skyminions", new MinionsCommand(collectionGui));
 
         // Collection 定期落盘（60 秒）

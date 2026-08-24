@@ -91,7 +91,7 @@ public final class FuelGuiListener implements Listener {
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
             player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
         }
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         manager.save(minion);
         FuelGui.open(player, minion); // 重建界面：刷新库存数量与状态卡
     }
@@ -108,7 +108,7 @@ public final class FuelGuiListener implements Listener {
         }
         minion.setFuelTicks(0);
         minion.setFuelBoost(1.0);
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.fuelUnequipped());
         FuelGui.open(player, minion);

@@ -164,13 +164,14 @@ public final class GuiText {
             MAP.put("title", "仆从 · {name}");
             MAP.put("info.title", "<gold>✦ {name} · 等级 {tier}</gold>");
             MAP.put("info.lore", List.of(
-                    "<gray>状态: <green>● 工作中</green></gray>",
+                    "<gray>状态: {status}</gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<dark_gray>速度 <green>{speed} 秒/次</green></dark_gray>",
                     "<dark_gray>产出 <green>≈ {rate} 件/小时</green></dark_gray>",
                     "<dark_gray>范围 <aqua>{range}</aqua></dark_gray>",
                     "<dark_gray>存储 <white>{storage} 件 / {slots} 格</white></dark_gray>",
                     "<dark_gray>稀有掉落 <light_purple>{rare} ({rare_chance}%)</light_purple></dark_gray>",
+                    "<dark_gray>取货或开启 <gold>自动售卖</gold> 后恢复工作{halted_tip}</dark_gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
                     "<dark_gray>累计产出 <yellow>{total} 件</yellow></dark_gray>",
                     "<dark_gray>下次工作 <green>{next} 秒后</green></dark_gray>"
@@ -193,7 +194,7 @@ public final class GuiText {
                     "{m3}",
                     "{body}",
                     "<dark_gray>" + LINE + "</dark_gray>",
-                    "<yellow>点击升级 ▶</yellow>"
+                    "<yellow>点击打开升级合成界面 ▶</yellow>"
             ));
             MAP.put("upgrade-lack.title", "<gold>升级到等级 {tier}</gold>");
             MAP.put("upgrade-lack.lore", List.of(
@@ -204,7 +205,7 @@ public final class GuiText {
                     "{m3}",
                     "{body}",
                     "<dark_gray>" + LINE + "</dark_gray>",
-                    "<gray>材料齐后点击升级</gray>"
+                    "<gray>点击打开升级合成界面（材料需放入合成格）</gray>"
             ));
             MAP.put("upgrade-max.title", "<gold>升级</gold>");
             MAP.put("upgrade-max.lore", List.of(
@@ -222,7 +223,8 @@ public final class GuiText {
                     "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>",
                     "<dark_gray>限时: <gray>煤炭/岩浆桶/烈焰棒</gray></dark_gray>",
                     "<dark_gray>永久: <gray>岩浆膏/荧石粉/日光传感器</gray></dark_gray>",
-                    "<dark_gray>空手点击查看燃料指引 · 手持燃料右键小人也可添加</dark_gray>"
+                    "<dark_gray>空手点击查看燃料指引 · 手持燃料右键小人也可添加（每次 1 个）</dark_gray>",
+                    "<dark_gray>永久燃料不可卸下，多次安装取最高加速</dark_gray>"
             ));
             MAP.put("skin.title", "<light_purple>皮肤</light_purple>");
             MAP.put("skin.lore", List.of(
@@ -351,8 +353,29 @@ public final class GuiText {
                     "<dark_gray>限时剩余 <yellow>{left}</yellow></dark_gray>",
                     "<gray>{none}当前无燃料</gray>",
                     "<dark_gray>" + LINE + "</dark_gray>",
-                    "<dark_gray>潜行点击卸下限时燃料</dark_gray>"
+                    "<dark_gray>潜行点击卸下限时燃料（永久燃料不可卸下）</dark_gray>"
             ));
+
+            // ---- 升级合成 GUI（Hypixel 式 3×3 合成玩法） ----
+            MAP.put("craft-gui.title", "<gold>升级合成 · {name} 等级 {tier}</gold>");
+            MAP.put("craft-gui.info.title", "<gold>升级配方 · 等级 {tier} → {next}</gold>");
+            MAP.put("craft-gui.info.lore", List.of(
+                    "<dark_gray>" + LINE + "</dark_gray>",
+                    "{m1}",
+                    "{m2}",
+                    "{m3}",
+                    "{body}",
+                    "<dark_gray>" + LINE + "</dark_gray>",
+                    "<gray>把材料与本体放入左侧合成格</gray>",
+                    "<yellow>材料齐后点击右侧产物合成 ▶</yellow>"
+            ));
+            MAP.put("craft-gui.result-lack.title", "<gray>材料未集齐</gray>");
+            MAP.put("craft-gui.result-lack.lore", List.of(
+                    "<gray>按左侧配方放入材料与本体</gray>",
+                    "<yellow>一键填充可从背包装入材料</yellow>"
+            ));
+            MAP.put("craft-gui.arrow.title", "<gray>合成</gray>");
+            MAP.put("craft-gui.back.title", "<yellow>◀ 返回仆从界面</yellow>");
         }
 
         private Defaults() {

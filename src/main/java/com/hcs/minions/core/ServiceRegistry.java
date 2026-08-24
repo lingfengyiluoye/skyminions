@@ -8,7 +8,6 @@ import com.hcs.minions.service.EconomyService;
 import com.hcs.minions.service.MinionEntityService;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
-import com.hcs.minions.service.OfflineRewardService;
 import com.hcs.minions.service.SellService;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.UpgradeService;
@@ -30,7 +29,6 @@ public final class ServiceRegistry {
     private MinionEntityService entities;
     private SellService sell;
     private MinionManager manager;
-    private OfflineRewardService offline;
     private MinionItemService itemService;
     private UpgradeService upgrades;
     private CollectionService collection;
@@ -113,14 +111,6 @@ public final class ServiceRegistry {
 
     public void setManager(MinionManager manager) {
         this.manager = manager;
-    }
-
-    public OfflineRewardService offline() {
-        return offline;
-    }
-
-    public void setOffline(OfflineRewardService offline) {
-        this.offline = offline;
     }
 
     public MinionItemService itemService() {

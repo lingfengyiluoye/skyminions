@@ -3,6 +3,7 @@ package com.hcs.minions.service;
 import com.hcs.minions.config.PluginConfig;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionType;
+import com.hcs.minions.util.Textures;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -21,8 +22,9 @@ import org.bukkit.profile.PlayerProfile;
 import org.bukkit.util.EulerAngle;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -32,10 +34,14 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class MinionEntityService {
 
+    private final JavaPlugin plugin;
     private final NamespacedKey minionKey;
     private final PluginConfig config;
+    /** 头顶告警状态缓存（仆从 id -> 是否处于停工告警），仅状态变化时才改写名牌。 */
+    private final Map<UUID, Boolean> statusWarnings = new ConcurrentHashMap<>();
 
     public MinionEntityService(JavaPlugin plugin, PluginConfig config) {
+        this.plugin = plugin;
         this.minionKey = new NamespacedKey(plugin, "minion");
         this.config = config;
     }
@@ -57,10 +63,7 @@ public final class MinionEntityService {
             as.setInvulnerable(true);
             as.setCollidable(false);
             as.setPersistent(false);
-            as.customName(Component.text()
-                    .append(Component.text(config.type(minion.type()).displayName(), NamedTextColor.GOLD))
-                    .append(Component.text(" 等级" + minion.level(), NamedTextColor.GRAY))
-                    .build());
+            as.customName(baseName(minion));
             as.setCustomNameVisible(true);
             as.getPersistentDataContainer().set(minionKey, PersistentDataType.STRING, minion.id().toString());
             as.setHelmet(head(minion));
@@ -76,6 +79,32 @@ public final class MinionEntityService {
         minion.setStand(stand);
     }
 
+    /** 头顶状态提示（对齐 Hypixel）：停工告警时名牌追加红字，恢复后自动还原。
+     *  仅在状态变化时改写，需在仆从所在 region 线程调用。 */
+    public void refreshStatus(Minion minion, boolean warning) {
+        Boolean prev = statusWarnings.put(minion.id(), warning);
+        if (prev != null && prev == warning) {
+            return;
+        }
+        ArmorStand stand = minion.stand();
+        if (stand == null || !stand.isValid()) {
+            return;
+        }
+        Component name = baseName(minion);
+        if (warning) {
+            name = name.append(Component.text(" ⚠仓库已满", NamedTextColor.RED));
+        }
+        stand.customName(name);
+    }
+
+    /** 名牌基础部分：显示名（金）+ 等级（灰），spawn 与状态刷新共用。 */
+    private Component baseName(Minion minion) {
+        return Component.text()
+                .append(Component.text(config.type(minion.type()).displayName(), NamedTextColor.GOLD))
+                .append(Component.text(" 等级" + minion.level(), NamedTextColor.GRAY))
+                .build();
+    }
+
     /** 皮肤/外观变更后刷新盔甲架（重新设置头盔，无需整只重生）。 */
     public void refreshAppearance(Minion minion) {
         ArmorStand stand = minion.stand();
@@ -88,16 +117,22 @@ public final class MinionEntityService {
         stand.setBoots(leather(Material.LEATHER_BOOTS, color(minion.type())));
     }
 
-    /** 工作手臂挥动动画（每次工作摆动一下）。 */
+    /** 工作手臂挥动动画（每次工作摆动一下，3 tick 后复位避免姿势残留抖动）。 */
     public void swing(Minion minion) {
         ArmorStand stand = minion.stand();
         if (stand == null || !stand.isValid()) {
             return;
         }
         stand.setRightArmPose(new EulerAngle(Math.toRadians(-100 - ThreadLocalRandom.current().nextDouble(50)), 0, 0));
+        stand.getScheduler().runDelayed(plugin, task -> {
+            if (stand.isValid()) {
+                stand.setRightArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
+            }
+        }, null, 3);
     }
 
     public void despawn(Minion minion) {
+        statusWarnings.remove(minion.id());
         ArmorStand stand = minion.stand();
         minion.setStand(null);
         if (stand != null && stand.isValid()) {
@@ -140,7 +175,7 @@ public final class MinionEntityService {
             // 现代 API：org.bukkit.profile.PlayerProfile + setOwnerProfile（旧 destroystokyo API 已弃用）
             PlayerProfile profile = Bukkit.createPlayerProfile(
                     UUID.nameUUIDFromBytes(texture.getBytes(StandardCharsets.UTF_8)), "Minion");
-            java.net.URL skinUrl = skinUrl(texture);
+            java.net.URL skinUrl = Textures.skinUrl(texture);
             if (skinUrl != null) {
                 profile.getTextures().setSkin(skinUrl);
             }
@@ -148,25 +183,6 @@ public final class MinionEntityService {
         }
         skull.setItemMeta(meta);
         return skull;
-    }
-
-    /** 从完整 base64 纹理值解码提取皮肤 URL（现代 API 的 setSkin 只接受 URL）。 */
-    private java.net.URL skinUrl(String texture) {
-        try {
-            String json = new String(Base64.getDecoder().decode(texture), StandardCharsets.UTF_8);
-            int i = json.indexOf("\"url\":\"");
-            if (i < 0) {
-                return null;
-            }
-            i += "\"url\":\"".length();
-            int j = json.indexOf('"', i);
-            if (j < 0) {
-                return null;
-            }
-            return java.net.URI.create(json.substring(i, j)).toURL();
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private ItemStack leather(Material material, Color color) {

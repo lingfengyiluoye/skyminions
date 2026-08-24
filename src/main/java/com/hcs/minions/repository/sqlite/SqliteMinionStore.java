@@ -36,24 +36,32 @@ public final class SqliteMinionStore implements MinionStore {
               upgrade1 VARCHAR(32),
               upgrade2 VARCHAR(32),
               skin VARCHAR(32),
+              auto_sell INT NOT NULL DEFAULT 0,
+              total_produced BIGINT NOT NULL DEFAULT 0,
+              permanent_boost DOUBLE NOT NULL DEFAULT 1.0,
               inventory BLOB
             )
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, last_active, island_id, upgrade1, upgrade2, skin, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               owner=excluded.owner, type=excluded.type, level=excluded.level, xp=excluded.xp,
               world=excluded.world, x=excluded.x, y=excluded.y, z=excluded.z,
               fuel_ticks=excluded.fuel_ticks, last_active=excluded.last_active,
               island_id=excluded.island_id, upgrade1=excluded.upgrade1, upgrade2=excluded.upgrade2,
-              skin=excluded.skin, inventory=excluded.inventory
+              skin=excluded.skin, auto_sell=excluded.auto_sell, total_produced=excluded.total_produced,
+              permanent_boost=excluded.permanent_boost, inventory=excluded.inventory
             """;
 
     private final File file;
     private final Object lock = new Object();
     private Connection connection;
+
+    /** 写操作重试策略：3 次尝试，退避 50ms/200ms（抖动场景下避免单次失败直接丢数据）。 */
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long[] RETRY_DELAY_MS = {50, 200};
 
     public SqliteMinionStore(File file) {
         this.file = file;
@@ -78,46 +86,44 @@ public final class SqliteMinionStore implements MinionStore {
         }
     }
 
-    /** 幂等迁移：为旧库补充 upgrade1/upgrade2/skin 列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）。 */
+    /** 幂等迁移：为旧库补充 upgrade1/upgrade2/skin/auto_sell/total_produced/permanent_boost 列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）。 */
     private void migrate(Statement st) throws Exception {
-        boolean hasUpgrade1 = false;
-        boolean hasUpgrade2 = false;
-        boolean hasSkin = false;
+        java.util.Set<String> existing = new java.util.HashSet<>();
         try (ResultSet rs = st.executeQuery("PRAGMA table_info(minions)")) {
             while (rs.next()) {
-                String col = rs.getString("name");
-                if ("upgrade1".equalsIgnoreCase(col)) {
-                    hasUpgrade1 = true;
-                } else if ("upgrade2".equalsIgnoreCase(col)) {
-                    hasUpgrade2 = true;
-                } else if ("skin".equalsIgnoreCase(col)) {
-                    hasSkin = true;
-                }
+                existing.add(rs.getString("name").toLowerCase());
             }
         }
-        if (!hasUpgrade1) {
-            st.execute("ALTER TABLE minions ADD COLUMN upgrade1 VARCHAR(32)");
-        }
-        if (!hasUpgrade2) {
-            st.execute("ALTER TABLE minions ADD COLUMN upgrade2 VARCHAR(32)");
-        }
-        if (!hasSkin) {
-            st.execute("ALTER TABLE minions ADD COLUMN skin VARCHAR(32)");
-        }
+        addColumnIfMissing(st, existing, "upgrade1", "VARCHAR(32)", null);
+        addColumnIfMissing(st, existing, "upgrade2", "VARCHAR(32)", null);
+        addColumnIfMissing(st, existing, "skin", "VARCHAR(32)", null);
+        addColumnIfMissing(st, existing, "auto_sell", "INT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "total_produced", "BIGINT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "permanent_boost", "DOUBLE NOT NULL", "1.0");
         // owner 索引（按主人查询/统计时避免全表扫）
         st.execute("CREATE INDEX IF NOT EXISTS idx_minions_owner ON minions(owner)");
     }
 
+    private static void addColumnIfMissing(Statement st, java.util.Set<String> existing,
+                                            String column, String type, String defaultValue) throws Exception {
+        if (existing.contains(column.toLowerCase())) {
+            return;
+        }
+        String ddl = "ALTER TABLE minions ADD COLUMN " + column + " " + type;
+        if (defaultValue != null) {
+            ddl += " DEFAULT " + defaultValue;
+        }
+        st.execute(ddl);
+    }
+
     @Override
     public void upsert(MinionData d) {
-        synchronized (lock) {
+        writeWithRetry("upsert", () -> {
             try (PreparedStatement ps = connection.prepareStatement(UPSERT)) {
                 bind(ps, d);
                 ps.executeUpdate();
-            } catch (Exception e) {
-                throw new RuntimeException("SQLite upsert 失败", e);
             }
-        }
+        });
     }
 
     @Override
@@ -153,14 +159,40 @@ public final class SqliteMinionStore implements MinionStore {
 
     @Override
     public void delete(UUID id) {
-        synchronized (lock) {
+        writeWithRetry("delete", () -> {
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM minions WHERE id = ?")) {
                 ps.setString(1, id.toString());
                 ps.executeUpdate();
-            } catch (Exception e) {
-                throw new RuntimeException("SQLite delete 失败", e);
+            }
+        });
+    }
+
+    /** 写操作带指数退避重试：重试耗尽后抛出（上层 CachedMinionRepository 会保留脏标记下轮再试）。 */
+    private void writeWithRetry(String op, SqlAction action) {
+        synchronized (lock) {
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    action.run();
+                    return;
+                } catch (Exception e) {
+                    if (attempt >= MAX_ATTEMPTS) {
+                        throw new RuntimeException("SQLite " + op + " 失败（已重试 " + MAX_ATTEMPTS + " 次）", e);
+                    }
+                    Logs.warn("SQLite {} 第 {} 次失败，{}ms 后重试", op, attempt, RETRY_DELAY_MS[attempt - 1]);
+                    try {
+                        Thread.sleep(RETRY_DELAY_MS[attempt - 1]);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("SQLite " + op + " 重试被中断", ie);
+                    }
+                }
             }
         }
+    }
+
+    @FunctionalInterface
+    private interface SqlAction {
+        void run() throws Exception;
     }
 
     @Override
@@ -182,7 +214,7 @@ public final class SqliteMinionStore implements MinionStore {
         ps.setString(i++, d.owner().toString());
         ps.setString(i++, d.type());
         ps.setInt(i++, d.level());
-        ps.setLong(i++, d.xp());
+        ps.setLong(i++, 0L); // xp 列保留但业务层已不使用（旧版字段，恒 0）
         ps.setString(i++, d.world());
         ps.setInt(i++, d.x());
         ps.setInt(i++, d.y());
@@ -193,6 +225,9 @@ public final class SqliteMinionStore implements MinionStore {
         ps.setString(i++, d.upgrade1());
         ps.setString(i++, d.upgrade2());
         ps.setString(i++, d.skin());
+        ps.setInt(i++, d.autoSell() ? 1 : 0);
+        ps.setLong(i++, d.totalProduced());
+        ps.setDouble(i++, d.permanentBoost());
         ps.setBytes(i, d.inventory());
     }
 
@@ -202,7 +237,6 @@ public final class SqliteMinionStore implements MinionStore {
                 UUID.fromString(rs.getString("owner")),
                 rs.getString("type"),
                 rs.getInt("level"),
-                rs.getLong("xp"),
                 rs.getString("world"),
                 rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
                 rs.getLong("fuel_ticks"),
@@ -211,6 +245,9 @@ public final class SqliteMinionStore implements MinionStore {
                 rs.getString("upgrade1"),
                 rs.getString("upgrade2"),
                 rs.getString("skin"),
+                rs.getInt("auto_sell") != 0,
+                rs.getLong("total_produced"),
+                rs.getDouble("permanent_boost"),
                 rs.getBytes("inventory")
         );
     }

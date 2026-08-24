@@ -5,8 +5,19 @@
 tick-period: 20             # 全局调度器周期（tick）
 max-checks-per-cycle: 48    # 单次策略执行方块检查硬上限（必须 < 50）
 max-minions-per-player: 5   # 每玩家仆从槽位上限（Hypixel 默认 5）
-# 固定仆从头颅贴图（base64 纹理，离线模式可用）。留空则用默认。
-head-texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTQyY2M5MjAzYzkwYjg5YmRhYzFkZjI4NDE2NzI2NmI5NTNkZmViZjNjNDY5MGE3Y2QwYjE1NzkxYTYyZTU4MiJ9fX0="
+# 固定仆从头颅贴图（base64 纹理，离线模式可用，皮肤未覆盖时的兜底）。留空则用默认。
+# 从 minecraft-heads.com / mcheads.ru 等头颅库复制 Value 字段粘贴即可（注意值必须完整有效，
+# 失效的纹理会导致客户端回退显示原版 Steve 头）。
+head-texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOWFkMDlkZDVkOTQyYjZiZTZhZDYyMWYzYzNlYmJjNmM3MDFkNWMzMDQyZmFmYjJkNmJhM2ZjYTU0YTNjZDYxNyJ9fX0="
+
+# 仆从皮肤纹理覆盖（可选）：键固定为 default/golden/diamond/halloween，
+# 值为头颅库的 base64 Value。留空则使用内置纹理：golden/diamond 自带已验证贴图，
+# default/halloween 回退上面的 head-texture。修改后 /minion reload 生效。
+skins:
+  default: ""
+  golden: ""
+  diamond: ""
+  halloween: ""
 # 调试日志：true 时打印仆从工作/搜索详情（排查用）
 debug: false
 
@@ -17,6 +28,15 @@ upgrade-require-previous-body: true
 # 收集解锁开关：true 时各类型需产物累计收集达到 unlock-amount 才解锁使用
 # （未解锁时图鉴显示 ???，无法放置）；服主可关闭该限制
 collection-unlock-enabled: true
+
+# 玩家活动半径（方块）：半径内无玩家时仆从休眠不产出，对齐 Hypixel；0 = 永不休眠
+player-scan-radius: 48
+
+# 仆从间最小间距（水平切比雪夫距离，同世界）：防止工作区重叠；5 = 两个 5x5 恰好不重叠，0 = 不限制
+min-placement-distance: 5
+
+# 稀有掉落播报方式：true = 全服广播；false = 仅私聊通知主人
+rare-drop-broadcast: true
 
 database:
   type: sqlite               # sqlite | mysql
@@ -38,30 +58,30 @@ economy:
 #   限时燃料：COAL/CHARCOAL(+5%) COAL_BLOCK(+5%) LAVA_BUCKET(+25%) BLAZE_ROD(+30%)
 #   永久燃料：MAGMA_CREAM(+30%) GLOWSTONE_DUST(+35%) DAYLIGHT_DETECTOR(+25%)  —— 不随时间衰减
 
-offline:
-  enabled: true
-  max-hours: 48             # 离线收益最大计算时长上限
-  rate-multiplier: 0.5      # 离线收益效率折扣
-
 # Collection 里程碑（Hypixel 采集里程碑玩法）：
 #   每种资源累计量跨过阈值时达成里程碑：奖励金币（第 n 个 = coins-base × n），
-#   命中 slot-milestones 序号的里程碑额外奖励仆从槽位 +1（多资源可叠加）。
+#   命中 slot-milestones 序号的里程碑额外奖励仆从槽位 +1（多资源可叠加，
+#   但总加成不超过 max-bonus-slots 硬上限，防止多资源叠加把经济玩坏）。
 collections:
   enabled: true
   milestones: [50, 100, 250, 500, 1000, 2500, 5000, 10000]
   coins-base: 100
   slot-milestones: [3, 5, 7]
+  max-bonus-slots: 5              # 里程碑槽位加成硬上限（默认权限上限 + 此加成 = 玩家可放置总数）
 
 types:
+  # 速率说明：动作间隔完全由 cooldown-ticks 逐级表决定（对齐 Hypixel 原版，燃料加速仍生效）；
+  # efficiency-per-level 固定 0.0，避免等级额外提速破坏原版曲线。
   miner:
     display-name: "矿工仆从"
     max-level: 12
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 20
+    # 动作间隔（tick，逐级表，完全对齐 Hypixel Coal Minion I-XI：15/15/13/13/12/12/10/10/9/9/7s，第12级沿用XI）
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
     sell-price-per-unit: 1.5
-    product: COAL                 # 离线收益产物
+    product: COAL                 # 收集解锁产物
     # 升级配方：多材料（Tier1→2 基础数量），实际消耗 = 基础数量 × upgrade-cost-growth^(当前等级-1)
     # 材料键支持两种来源：
     #   · 原版材料：大写 Material 名（如 COBBLESTONE）
@@ -73,8 +93,7 @@ types:
       REDSTONE: 16
     upgrade-cost-growth: 1.25     # 每升一级材料量 ×1.25，陡增曲线
     base-radius: 2                # 固定工作半径（2 即 5x5，对齐 Hypixel 不随等级变）
-    harvest-cap: 4                # 模拟采集：只统计范围内可采方块数量按比例产出，不破坏方块；
-                                  # 单次收获 = min(可采数量, harvest-cap)，摆得越多产得越快
+    harvest-cap: 1                # 对齐 Hypixel：每次动作产 1 件；调大可恢复「布局奖励」玩法
     rare-drop: EMERALD            # 专属稀有掉落（可空 = 关闭）
     rare-drop-chance: 0.003       # 稀有掉落概率（0.003 = 0.3%）
     unlock-amount: 100            # 收集解锁：累计收集产物（product）达到此量才解锁（0 = 免解锁）
@@ -83,9 +102,10 @@ types:
     display-name: "农夫仆从"
     max-level: 12
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 20
+    # 动作间隔（逐级表，完全对齐 Hypixel Wheat Minion I-XI：15/15/13/13/11/11/10/10/9/9/8s）
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
     sell-price-per-unit: 0.8
     product: WHEAT
     upgrade-recipe:
@@ -94,7 +114,7 @@ types:
       PUMPKIN: 16
     upgrade-cost-growth: 1.25
     base-radius: 2
-    harvest-cap: 4                # 模拟收割：只统计范围内成熟作物数量按比例产出，不破坏作物
+    harvest-cap: 1                # 对齐 Hypixel：每次动作产 1 件，作物不被破坏
     rare-drop: GOLDEN_CARROT
     rare-drop-chance: 0.005
     unlock-amount: 100
@@ -103,9 +123,10 @@ types:
     display-name: "伐木工仆从"
     max-level: 12
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 20
+    # 动作间隔（逐级表，完全对齐 Hypixel Oak Minion I-XI：48/48/45/45/42/42/38/38/33/33/27s）
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
     sell-price-per-unit: 1.0
     product: OAK_LOG
     upgrade-recipe:
@@ -123,9 +144,10 @@ types:
     display-name: "钓鱼仆从"
     max-level: 12
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 520          # 约 26 秒/次（对齐 Hypixel 钓鱼节奏，避免产量爆炸）
+    # 动作间隔（逐级表，Hypixel Fishing Minion T1=75s/T11=35s，中间按每级 -4s 插值）
+    cooldown-ticks: [1500, 1420, 1340, 1260, 1180, 1100, 1020, 940, 860, 780, 700, 700]
     sell-price-per-unit: 2.0
     product: COD
     upgrade-recipe:
@@ -142,9 +164,10 @@ types:
     display-name: "猎魔仆从"
     max-level: 12
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 80
+    # 动作间隔（逐级表，完全对齐 Hypixel Zombie Minion I-XI：26/26/24/24/22/22/20/20/17/17/13s）
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
     sell-price-per-unit: 2.5
     product: ROTTEN_FLESH
     upgrade-recipe:
@@ -158,12 +181,13 @@ types:
     unlock-amount: 200
     targets: []                   # 战斗型不受目标方块限制
   rancher:
-    display-name: "牧民仆从"      # 畜牧玩法（对齐 Hypixel Cow/Chicken/Sheep）：
-    max-level: 12                 # 空场引种 → 繁殖幼崽 → 成年达 4 只后宰杀取战利品
+    display-name: "牧民仆从"      # 纯模拟畜牧（对齐 Hypixel Cow/Chicken/Sheep）：
+    max-level: 12                 # 每次工作随机一种动物按战利品表 roll 掉落，不生成动物实体
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 60
+    # 动作间隔（逐级表，完全对齐 Hypixel Cow Minion I-XI：26/26/24/24/22/22/20/20/17/17/13s）
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
     sell-price-per-unit: 1.2
     product: BEEF
     upgrade-recipe:
@@ -175,14 +199,15 @@ types:
     rare-drop: SADDLE
     rare-drop-chance: 0.005
     unlock-amount: 150
-    targets: []                   # 畜牧型不受目标方块限制（自动管理范围内牛/羊/鸡/猪）
+    targets: []                   # 畜牧型不受目标方块限制（纯模拟产出牛羊鸡猪战利品）
   cobble:
     display-name: "圆石仆从"      # 生成器玩法（对齐 Hypixel Cobblestone Minion）：
     max-level: 12                 # 无圆石可采时在固体上方生成圆石，下次采掉，免搭刷石机
     base-efficiency: 1.0
-    efficiency-per-level: 0.1
+    efficiency-per-level: 0.0
     base-fuel-ticks: 72000
-    cooldown-ticks: 24
+    # 动作间隔（逐级表，完全对齐 Hypixel Cobblestone Minion I-XI：14/14/12/12/10/10/9/9/8/8/7s）
+    cooldown-ticks: [280, 280, 240, 240, 200, 200, 180, 180, 160, 160, 140, 140]
     sell-price-per-unit: 0.3
     product: COBBLESTONE
     upgrade-recipe:

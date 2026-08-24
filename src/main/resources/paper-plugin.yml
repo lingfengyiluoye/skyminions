@@ -27,9 +27,7 @@ libraries:
 # 权限（LuckPerms 会自动接管这些 Bukkit 权限）：
 #   hcs.minions.admin         管理权限（op 默认拥有）
 #   hcs.minions.use          使用仆从（默认人人有）
-#   hcs.minions.type.miner    可使用矿工仆从
-#   hcs.minions.type.farmer   可使用农夫仆从
-#   hcs.minions.type.lumberjack 可使用伐木工仆从
+#   hcs.minions.type.<type>   可使用某类仆从（miner/farmer/lumberjack/fisher/slayer/rancher/cobble，默认均为 true）
 #   hcs.minions.limit.<n>     仆从数量上限（取拥有的最大 n，如 hcs.minions.limit.20）
 permissions:
   hcs.minions.admin:
@@ -46,4 +44,16 @@ permissions:
     default: true
   hcs.minions.type.lumberjack:
     description: 使用伐木工仆从
+    default: true
+  hcs.minions.type.fisher:
+    description: 使用钓鱼仆从
+    default: true
+  hcs.minions.type.slayer:
+    description: 使用猎魔仆从
+    default: true
+  hcs.minions.type.rancher:
+    description: 使用牧民仆从
+    default: true
+  hcs.minions.type.cobble:
+    description: 使用圆石仆从
     default: true

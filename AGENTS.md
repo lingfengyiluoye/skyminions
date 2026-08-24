@@ -30,8 +30,8 @@ com.hcs.minions
 ├── repository/              # 接口 + 缓存 + SQLite/MySQL
 ├── service/                 # MinionManager（全局调度器）+ 各业务服务
 ├── work/                    # 策略模式（7 种仆从工作策略）
-├── gui/                     # MinionGUIListener（仓库）/ CollectionGui（图鉴）/ FuelGui（燃料选择）
-├── listener/                # 放置/交互/上线事件
+├── gui/                     # MinionGUIListener（仓库）/ CollectionGui（图鉴）/ FuelGui（燃料选择）/ UpgradeCraftGui（升级合成）
+├── listener/                # 放置/交互事件
 ├── event/                   # 自定义 Bukkit Event
 └── util/                    # AsyncExecutor / ItemCodec / Logs / Messages / GuiText / GuiLayout
 ```
@@ -47,7 +47,8 @@ Paper/Adventure 框架下渲染物品名或 Lore 时，**必须**显式调用 `d
 ### 3. GUI 设计遵循 Hypixel 规范
 - 头颅居中作为视觉锚点
 - 信息书合并完整产出统计（速度/件每小时/范围/存储/稀有掉落）
-- 升级按钮展示"当前→下一级"对比及仓库已有材料数
+- 升级按钮展示"当前→下一级"对比及仓库已有材料数；点击打开 Hypixel 式 3×3 合成界面
+  （本体 + 材料放入合成格合成下一 Tier，配方沿用 config.yml upgrade-recipe）
 - 模块槽位于存储区下方，收集按钮居中
 - 卡片内用 ▬ 分隔线分节
 
@@ -86,8 +87,12 @@ hcs.minions.limit.<n>       # 数量上限（取最大 n）
 
 ## 注意事项
 
-- 全局单 `GlobalRegionScheduler` 每 20 tick 遍历一次，O(n)+O(1) 短路
+- 全局单 `GlobalRegionScheduler` 每 20 tick 遍历一次，O(n)+O(1) 短路；真正触碰方块/实体的逻辑委派到仆从所在 region 线程
 - 矿工/农夫采用**模拟采集**（只读方块类型，不破坏方块）
 - 伐木工连锁整棵树，砍完自动在树根补种树苗
+- 猎魔仆从以 `damage()` 击杀怪物触发 EntityDeathEvent（任务/统计插件联动），`SlayerKills` 标记 + 监听器清自然掉落避免双份
+- 仓库满且无自动售卖时**停工**（不产出），头顶名牌追加红字告警，取货/开售卖后自动恢复
+- 放置限制：同格禁放 + 仆从间最小间距（`min-placement-distance`）；玩家休眠半径 `player-scan-radius` 内无人则停产
+- DB 写操作（upsert/delete）带指数退避重试，重试耗尽后保留脏标记下轮再试，不丢数据
 - 方块破坏与 `Inventory#addItem` 均在主线程，仅 Vault 售卖异步
 - **严禁在业务代码中空 catch 吞异常**——捕获后必须记录并优雅降级

@@ -12,8 +12,11 @@ import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.PermissionService;
 import com.hcs.minions.service.hook.SkyblockHook;
+import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -81,6 +84,14 @@ public final class MinionInteractionListener implements Listener {
         }
         if (!skyblock.canPlaceAt(block.getLocation())) {
             player.sendMessage(Messages.MUST_PLACE_ON_ISLAND);
+            return;
+        }
+        if (manager.minionAt(BlockLocation.of(block)) != null) {
+            player.sendMessage(Messages.LOCATION_OCCUPIED);
+            return;
+        }
+        if (manager.tooCloseToOtherMinion(BlockLocation.of(block))) {
+            player.sendMessage(Messages.MINION_TOO_CLOSE);
             return;
         }
 
@@ -156,8 +167,9 @@ public final class MinionInteractionListener implements Listener {
                 hand.setAmount(hand.getAmount() - 1);
                 player.sendMessage(Messages.permanentFuelEquipped((int) ((fuelValue.boost() - 1) * 100)));
             } else {
-                minion.addFuel(fuelValue.durationTicks() * hand.getAmount(), fuelValue.boost());
-                hand.setAmount(0);
+                // 每次只消耗 1 个，避免手持整组误操作一次性吃光（GUI 燃料槽仍可整组安装）
+                minion.addFuel(fuelValue.durationTicks(), fuelValue.boost());
+                hand.setAmount(hand.getAmount() - 1);
                 player.sendMessage(Messages.fuelAdded((int) ((fuelValue.boost() - 1) * 100)));
             }
             return;
@@ -167,8 +179,16 @@ public final class MinionInteractionListener implements Listener {
     }
 
     private void pickup(Player player, Minion minion) {
+        ItemStack spawner;
+        try {
+            spawner = items.createItemFromMinion(minion);
+        } catch (Exception e) {
+            // 生成物异常时不移除，避免丢数据；留日志便于定位（历史上曾出现静默拾取失败）
+            Logs.error("拾取失败（生成物构造异常）: id=" + minion.id() + ", type=" + minion.type(), e);
+            player.sendMessage(Component.text("拾取失败：物品生成异常，详情见控制台日志", NamedTextColor.RED));
+            return;
+        }
         minion.cleanupLayoutBlocks(); // 拾取时还原理想布局摆放的水/岩浆
-        ItemStack spawner = items.createItemFromMinion(minion);
         manager.remove(minion, player);
         giveOrDrop(player, spawner);
     }

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CollectionConfigTest {
 
     private static final CollectionConfig CFG = new CollectionConfig(
-            true, new long[]{50, 100, 250, 500}, 100, Set.of(3, 5, 7));
+            true, new long[]{50, 100, 250, 500}, 100, Set.of(3, 5, 7), 5);
 
     @Test
     void reachedIndexBelowFirstMilestone() {
@@ -57,7 +57,7 @@ class CollectionConfigTest {
     @Test
     void milestonesDefensiveCopy() {
         long[] input = {50, 100};
-        CollectionConfig cfg = new CollectionConfig(true, input, 10, Set.of());
+        CollectionConfig cfg = new CollectionConfig(true, input, 10, Set.of(), 5);
         input[0] = 999;
         assertEquals(50, cfg.thresholdOf(1));
         // 外部拿到 accessor 数组也不能污染内部状态
@@ -68,14 +68,14 @@ class CollectionConfigTest {
 
     @Test
     void defaultMilestonesWhenEmpty() {
-        CollectionConfig cfg = new CollectionConfig(true, new long[0], 10, Set.of());
+        CollectionConfig cfg = new CollectionConfig(true, new long[0], 10, Set.of(), 5);
         assertEquals(8, cfg.milestones().length);
         assertEquals(50, cfg.thresholdOf(1));
     }
 
     @Test
     void negativeSlotsIgnored() {
-        CollectionConfig cfg = new CollectionConfig(true, new long[]{10}, 10, Set.of(-1, 0, 1));
+        CollectionConfig cfg = new CollectionConfig(true, new long[]{10}, 10, Set.of(-1, 0, 1), 5);
         assertEquals(1, cfg.bonusSlotsFor(1));
         assertEquals(0, cfg.bonusSlotsFor(0));
     }

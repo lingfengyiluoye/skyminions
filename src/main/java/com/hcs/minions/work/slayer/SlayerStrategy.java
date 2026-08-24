@@ -8,6 +8,7 @@ import com.hcs.minions.work.WorkOutcome;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Monster;
 import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Slime;
@@ -64,9 +65,14 @@ public final class SlayerStrategy implements MinionWorkStrategy {
     @Override
     public WorkOutcome performWork(WorkContext ctx) {
         Entity victim = findHostile(ctx);
-        if (victim != null) {
-            // 真实击杀：移除实体并按怪物种类给出对应掉落
-            victim.remove();
+        if (victim instanceof LivingEntity living) {
+            // 真实击杀：用 damage() 触发 EntityDeathEvent（任务/统计类插件可联动）；
+            // 掉落由下方模拟 loot 表给出，标记后由监听器清掉自然掉落避免双份
+            SlayerKills.mark(living);
+            living.damage(9999.0);
+            if (!living.isDead() && living.isValid()) {
+                SlayerKills.unmark(living); // 伤害未致死（如抗性/无敌），撤销标记
+            }
             List<ItemStack> drops = lootOf(victim, ctx.random());
             long xp = Math.max(1, drops.stream().mapToLong(ItemStack::getAmount).sum());
             return new WorkOutcome(true, xp, drops);

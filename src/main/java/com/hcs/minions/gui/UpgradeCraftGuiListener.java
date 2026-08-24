@@ -1,0 +1,182 @@
+package com.hcs.minions.gui;
+
+import com.hcs.minions.config.MinionTypeConfig;
+import com.hcs.minions.config.PluginConfig;
+import com.hcs.minions.event.MinionLevelUpEvent;
+import com.hcs.minions.model.Minion;
+import com.hcs.minions.service.MinionItemService;
+import com.hcs.minions.service.MinionManager;
+import com.hcs.minions.service.hook.SkyblockHook;
+import com.hcs.minions.util.Messages;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.plugin.java.JavaPlugin;
+
+/**
+ * 升级合成 GUI 交互：合成格自由取放（材料来自玩家背包），材料齐后点击结果槽
+ * 消耗格内物品并原地升级仆从；关闭/返回时格内残留物品归还玩家。
+ */
+public final class UpgradeCraftGuiListener implements Listener {
+
+    private final JavaPlugin plugin;
+    private final MinionManager manager;
+    private final MinionItemService items;
+    private final PluginConfig config;
+    private final SkyblockHook skyblock;
+
+    public UpgradeCraftGuiListener(JavaPlugin plugin, MinionManager manager, MinionItemService items,
+                                   PluginConfig config, SkyblockHook skyblock) {
+        this.plugin = plugin;
+        this.manager = manager;
+        this.items = items;
+        this.config = config;
+        this.skyblock = skyblock;
+    }
+
+    @EventHandler
+    public void onClick(InventoryClickEvent event) {
+        if (!(event.getInventory().getHolder() instanceof UpgradeCraftGui.CraftHolder holder)) {
+            return;
+        }
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        Minion minion = manager.minion(holder.minionId());
+        if (minion == null) {
+            player.closeInventory();
+            return;
+        }
+        if (!skyblock.canUse(minion, player.getUniqueId())) {
+            event.setCancelled(true);
+            return;
+        }
+        Inventory inv = event.getInventory();
+        int slot = event.getRawSlot();
+        if (slot >= inv.getSize()) {
+            // 玩家背包区自由操作；潜行快速移入合成格后延迟刷新结果槽
+            if (event.isShiftClick()) {
+                scheduleRefresh(inv, minion);
+            }
+            return;
+        }
+        if (UpgradeCraftGui.isGridSlot(slot)) {
+            scheduleRefresh(inv, minion); // 放置/取走在事件后生效，下一 tick 重算结果
+            return;
+        }
+        event.setCancelled(true);
+        if (slot == UpgradeCraftGui.resultSlot()) {
+            handleCraft(player, inv, minion);
+            return;
+        }
+        if (slot == UpgradeCraftGui.infoSlot() && event.isShiftClick()) {
+            UpgradeCraftGui.fillFromInventory(inv, player, minion, items,
+                    config.type(minion.type()), config);
+            UpgradeCraftGui.refresh(inv, minion, items, config);
+            return;
+        }
+        if (slot == UpgradeCraftGui.backSlot()) {
+            manager.openGui(player, minion); // 关闭时 onClose 归还格内物品
+        }
+        // 箭头与装饰槽：仅拦截
+    }
+
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (!(event.getInventory().getHolder() instanceof UpgradeCraftGui.CraftHolder holder)) {
+            return;
+        }
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        Minion minion = manager.minion(holder.minionId());
+        if (minion == null || !skyblock.canUse(minion, player.getUniqueId())) {
+            event.setCancelled(true);
+            return;
+        }
+        Inventory inv = event.getInventory();
+        for (int raw : event.getRawSlots()) {
+            if (raw < inv.getSize() && !UpgradeCraftGui.isGridSlot(raw)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        scheduleRefresh(inv, minion);
+    }
+
+    @EventHandler
+    public void onClose(InventoryCloseEvent event) {
+        if (!(event.getInventory().getHolder() instanceof UpgradeCraftGui.CraftHolder)) {
+            return;
+        }
+        if (event.getPlayer() instanceof Player player) {
+            UpgradeCraftGui.returnGridItems(event.getInventory(), player);
+        }
+    }
+
+    /** 点击结果槽：材料精确齐备才合成（清空合成格 → 原地升级 → 返回仆从界面）。 */
+    private void handleCraft(Player player, Inventory inv, Minion minion) {
+        MinionTypeConfig cfg = config.type(minion.type());
+        if (minion.level() >= cfg.maxLevel()) {
+            player.sendMessage(Messages.MAX_LEVEL);
+            player.closeInventory();
+            return;
+        }
+        UpgradeCraftGui.CraftCheck check = UpgradeCraftGui.validate(inv, minion, items, cfg, config);
+        if (!check.complete()) {
+            player.sendMessage(Messages.upgradeFailed(formatMissing(check)));
+            return;
+        }
+        UpgradeCraftGui.clearGrid(inv);
+        minion.upgrade(cfg);
+        Bukkit.getPluginManager().callEvent(new MinionLevelUpEvent(minion, minion.level()));
+        minion.refresh(cfg, config.upgradeRequirePreviousBody());
+        manager.save(minion);
+        player.sendMessage(Messages.upgradeSuccess(minion.level()));
+        // 点击事件中直接开新界面可能不被客户端接受：先关闭，下一 tick 重开仆从界面
+        // （onClose 时合成格已清空，不会误归还）
+        player.closeInventory();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline() && manager.minion(minion.id()) != null) {
+                manager.openGui(player, minion);
+            }
+        });
+    }
+
+    /** 缺失清单格式化：材料不足与缺本体合并提示。 */
+    private static String formatMissing(UpgradeCraftGui.CraftCheck check) {
+        StringBuilder sb = new StringBuilder();
+        for (var e : check.missing().entrySet()) {
+            if (sb.length() > 0) {
+                sb.append("、");
+            }
+            sb.append(e.getKey().displayName()).append(" ×").append(e.getValue());
+        }
+        if (check.bodyMissing()) {
+            if (sb.length() > 0) {
+                sb.append("、");
+            }
+            sb.append("仆从本体 ×1");
+        }
+        if (sb.length() == 0) {
+            sb.append("格内存在多余物品");
+        }
+        return sb.toString();
+    }
+
+    /** 格子内容变化在点击事件之后生效，延迟 1 tick 刷新信息卡与结果槽。 */
+    private void scheduleRefresh(Inventory inv, Minion minion) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (inv.getHolder() instanceof UpgradeCraftGui.CraftHolder) {
+                UpgradeCraftGui.refresh(inv, minion, items, config);
+            }
+        });
+    }
+}

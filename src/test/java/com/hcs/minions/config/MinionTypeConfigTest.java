@@ -23,7 +23,7 @@ class MinionTypeConfigTest {
         recipe.put(COAL, 16L);
         return new MinionTypeConfig(
                 "test", "测试", 12, 1.0, 0.1, 72000L, 20, 1.0,
-                Material.COBBLESTONE, recipe, growth, 2, 1,
+                Material.COBBLESTONE, recipe, growth, 2, 1, new int[0],
                 java.util.Set.of(Material.COBBLESTONE), null, 0.0, 0L);
     }
 
@@ -56,7 +56,7 @@ class MinionTypeConfigTest {
         recipe.put(new ItemRef.VanillaRef(Material.APPLE), 1L);
         MinionTypeConfig c = new MinionTypeConfig(
                 "t", "t", 12, 1.0, 0.1, 72000L, 20, 1.0,
-                Material.COBBLESTONE, recipe, 1.01, 2, 1,
+                Material.COBBLESTONE, recipe, 1.01, 2, 1, new int[0],
                 java.util.Set.of(Material.COBBLESTONE), null, 0.0, 0L);
         // round(1 × 1.01^n) 可能为 1 附近，至少保底 1
         assertTrue(c.recipeFor(1).get(new ItemRef.VanillaRef(Material.APPLE)) >= 1);
@@ -74,6 +74,22 @@ class MinionTypeConfigTest {
     void recipeIsImmutable() {
         Map<ItemRef, Long> recipe = cfg(1.25).upgradeRecipe();
         assertEquals(true, isImmutable(recipe));
+    }
+
+    @Test
+    void cooldownTableLookupByLevel() {
+        // 逐级表（对齐 Hypixel）：下标 = 等级-1，越界取末项；空表回退统一值
+        Map<ItemRef, Long> recipe = new LinkedHashMap<>();
+        recipe.put(COBBLE, 64L);
+        MinionTypeConfig c = new MinionTypeConfig(
+                "t", "t", 12, 1.0, 0.0, 72000L, 300, 1.0,
+                Material.COBBLESTONE, recipe, 1.25, 2, 1, new int[]{300, 300, 260},
+                java.util.Set.of(Material.COBBLESTONE), null, 0.0, 0L);
+        assertEquals(300, c.cooldownTicksAt(1));
+        assertEquals(260, c.cooldownTicksAt(3));
+        assertEquals(260, c.cooldownTicksAt(12)); // 超出表长取末项
+        // 空表：全等级统一 cooldownTicks
+        assertEquals(20, cfg(1.25).cooldownTicksAt(5));
     }
 
     private static boolean isImmutable(Map<ItemRef, Long> map) {

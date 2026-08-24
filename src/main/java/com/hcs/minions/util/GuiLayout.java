@@ -20,7 +20,7 @@ import java.util.Set;
  *   <li>可 {@code /minion reload} 热重载（布局变化在下次打开对应 GUI 时生效）。</li>
  * </ul>
  *
- * <p>键前缀与界面尺寸：{@code storage.*}/{@code collection.*} = 54 格，
+ * <p>键前缀与界面尺寸：{@code storage.*}/{@code collection.*}/{@code craft.*} = 54 格，
  * {@code fuel-gui.*} = 27 格。槽位冲突（与存储区/卡片区重叠）不强制拦截，
  * 但渲染顺序靠后的一方会覆盖前者，服主自行避免。</p>
  */
@@ -252,6 +252,25 @@ public final class GuiLayout {
             SLOT_DEFAULTS.put("fuel-gui.close.slot", 26);
             MATERIAL_DEFAULTS.put("fuel-gui.empty.material", Material.GRAY_STAINED_GLASS_PANE);
             MATERIAL_DEFAULTS.put("fuel-gui.close.material", Material.BARRIER);
+
+            // ---- 升级合成 GUI（54 格，Hypixel 式 3×3 合成玩法） ----
+            SLOTS_DEFAULTS.put("craft.grid.slots", new int[]{11, 12, 13, 20, 21, 22, 29, 30, 31});
+            SLOT_DEFAULTS.put("craft.arrow.slot", 23);
+            SLOT_DEFAULTS.put("craft.result.slot", 24);
+            SLOT_DEFAULTS.put("craft.info.slot", 4);
+            SLOT_DEFAULTS.put("craft.back.slot", 49);
+            SLOTS_DEFAULTS.put("craft.decor.slots", new int[]{
+                    0, 1, 2, 3, 5, 6, 7, 8,
+                    9, 10, 14, 15, 16, 17,
+                    18, 19, 25, 26,
+                    27, 28, 32, 33, 34, 35,
+                    36, 37, 38, 39, 40, 41, 42, 43, 44,
+                    45, 46, 47, 48, 50, 51, 52, 53
+            });
+            MATERIAL_DEFAULTS.put("craft.arrow.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("craft.decor.material", Material.BLACK_STAINED_GLASS_PANE);
+            MATERIAL_DEFAULTS.put("craft.back.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("craft.lack.material", Material.GRAY_STAINED_GLASS_PANE);
         }
 
         private Defaults() {

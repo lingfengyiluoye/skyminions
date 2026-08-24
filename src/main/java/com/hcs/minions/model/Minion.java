@@ -44,9 +44,6 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class Minion {
 
-    /** 合成升级全局开关（升级需消耗当前等级仆从本体），MinionsPlugin 加载/重载配置时刷新。 */
-    public static volatile boolean requirePreviousBody = true;
-
     public static final int GUI_SIZE = 54;
 
     // Hypixel 风格布局（槽位/材质均由 gui.yml layout 段驱动，见 {@link GuiLayout}）：
@@ -345,30 +342,6 @@ public final class Minion {
         return remaining == 0;
     }
 
-    /** 原子扣除多材料配方：全部足够才一起扣；返回缺失清单（材料->还差数量），空 map=成功。 */
-    public Map<ItemRef, Long> consumeRecipe(Map<ItemRef, Long> recipe) {
-        Map<ItemRef, Long> missing = missingRecipe(recipe);
-        if (!missing.isEmpty()) {
-            return missing; // 原子：任一材料不足则不扣任何材料
-        }
-        for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
-            consume(e.getKey(), e.getValue());
-        }
-        return Map.of();
-    }
-
-    /** 只读校验配方是否足够（不扣除）：返回缺失清单，空 map = 全部足够。 */
-    public Map<ItemRef, Long> missingRecipe(Map<ItemRef, Long> recipe) {
-        Map<ItemRef, Long> missing = new LinkedHashMap<>();
-        for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
-            long owned = countInStorage(e.getKey());
-            if (owned < e.getValue()) {
-                missing.put(e.getKey(), e.getValue() - owned);
-            }
-        }
-        return missing;
-    }
-
     public void removeItems(List<ItemStack> items) {
         // 用 isSimilar 匹配（含 meta），修复旧实现仅按 getType() 匹配导致
         // 误删同名但 meta 不同物品的问题（P2-1）
@@ -403,7 +376,7 @@ public final class Minion {
     }
 
     // ---- GUI 渲染 ----
-    public void refresh(MinionTypeConfig cfg) {
+    public void refresh(MinionTypeConfig cfg, boolean requireBody) {
         // 统一深色边框玻璃（顶栏/底栏同色，存储区锁定格用浅色区分）——材质均由 layout 配置
         ItemStack decor = named(GuiLayout.material("storage.decor.material"), Component.empty());
         for (int s : GuiLayout.slots("storage.decor.slots")) {
@@ -425,7 +398,7 @@ public final class Minion {
         storage.setItem(fuelSlot(), fuelDisplay());
         storage.setItem(infoSlot(), infoItem(cfg));
         storage.setItem(headSlot(), headItem(cfg));
-        storage.setItem(upgradeSlot(), upgradeButton(cfg));
+        storage.setItem(upgradeSlot(), upgradeButton(cfg, requireBody));
         storage.setItem(skinSlot(), skinItem());
         storage.setItem(module1Slot(), upgradeSlotItem(upgrade1, 1, unlockedUpgradeSlots() >= 1));
         storage.setItem(module2Slot(), upgradeSlotItem(upgrade2, 2, unlockedUpgradeSlots() >= 2));
@@ -453,6 +426,12 @@ public final class Minion {
             v.put("rare", MaterialNames.of(cfg.rareDrop()));
             v.put("rare_chance", String.format("%.2f", cfg.rareDropChance() * 100));
         }
+        if (isStorageFull()) {
+            v.put("status", "<red>⚠ 仓库已满 · 停工中</red>");
+            v.put("halted_tip", ""); // 可选行：停工时追加恢复提示
+        } else {
+            v.put("status", "<green>● 工作中</green>");
+        }
         v.put("total", String.valueOf(totalProduced));
         v.put("next", String.valueOf(nextWorkSeconds()));
         return named(GuiLayout.material("storage.info.material"), GuiText.title("info.title", v), GuiText.lore("info.lore", v));
@@ -460,7 +439,7 @@ public final class Minion {
 
     /** 纯函数：指定等级下的单次工作秒数（含燃料加成），供当前/下一级对比。 */
     double secondsPerAction(MinionTypeConfig cfg, int atLevel) {
-        return Math.max(0.1, cfg.cooldownTicks() / 20.0 / cfg.efficiencyAt(atLevel) / fuelBoost());
+        return Math.max(0.1, cfg.cooldownTicksAt(atLevel) / 20.0 / cfg.efficiencyAt(atLevel) / fuelBoost());
     }
 
     /** 仓库内现存物品件数（展示用）。 */
@@ -485,30 +464,6 @@ public final class Minion {
             }
         }
         return n;
-    }
-
-    /** 仓库内寻找与扣除由调用方谓词匹配的槽位（合成升级消耗仆从本体用），命中返回槽位否则 -1。 */
-    public int findSlot(java.util.function.Predicate<ItemStack> matcher) {
-        for (int i = 0; i < unlockedSlots(); i++) {
-            ItemStack item = storage.getItem(storageSlots()[i]);
-            if (item != null && item.getType() != Material.AIR && matcher.test(item)) {
-                return storageSlots()[i];
-            }
-        }
-        return -1;
-    }
-
-    /** 扣除指定槽位 1 件物品。 */
-    public void takeOne(int slot) {
-        ItemStack item = storage.getItem(slot);
-        if (item == null) {
-            return;
-        }
-        item.setAmount(item.getAmount() - 1);
-        if (item.getAmount() <= 0) {
-            storage.setItem(slot, null);
-        }
-        markDirty();
     }
 
     /** 纯函数：按单次工作秒数与单次收获上限估算产出速率（对齐 Hypixel GUI 的 items/hour 展示）。 */
@@ -560,7 +515,7 @@ public final class Minion {
 
     /** 升级按钮（文案来自 gui.yml）：upgrade（材料充足）/ upgrade-lack（不足）/ upgrade-max（满级）。
      *  多材料配方以 m1~m3 占位符逐行注入，材料名颜色随足够与否变化。 */
-    private ItemStack upgradeButton(MinionTypeConfig cfg) {
+    private ItemStack upgradeButton(MinionTypeConfig cfg, boolean requireBody) {
         if (level >= cfg.maxLevel()) {
             Map<String, String> max = Map.of("tier", String.valueOf(cfg.maxLevel()));
             return named(GuiLayout.material("storage.upgrade.material-max"),
@@ -572,7 +527,7 @@ public final class Minion {
         v.put("tier", String.valueOf(level + 1));
         v.put("speed_now", String.format("%.1f", secondsPerAction(cfg, level)));
         v.put("speed_next", String.format("%.1f", secondsPerAction(cfg, level + 1)));
-        if (requirePreviousBody) {
+        if (requireBody) {
             v.put("body", "<dark_gray>· <aqua>仆从本体</aqua> <white>×1</white> <gray>（同类型当前等级）</gray>");
         }
         int row = 1;
@@ -685,11 +640,6 @@ public final class Minion {
         return location;
     }
 
-    public void setLocation(BlockLocation location) {
-        this.location = location;
-        markDirty();
-    }
-
     public long fuelTicks() {
         return fuelTicks;
     }
@@ -717,10 +667,18 @@ public final class Minion {
         markDirty();
     }
 
-    /** 添加限时燃料。 */
+    /** 添加限时燃料。续期时按剩余时长加权平均加速，避免低级燃料白蹭高级加成。 */
     public void addFuel(long duration, double boost) {
+        if (duration <= 0) {
+            return;
+        }
+        if (fuelTicks <= 0) {
+            this.fuelBoost = boost;
+        } else if (boost != this.fuelBoost) {
+            // 剩余 10 分钟 +30% 续入 60 分钟 +10% → 加权平均，经济上等价交换不产生套利
+            this.fuelBoost = (fuelTicks * this.fuelBoost + duration * boost) / (double) (fuelTicks + duration);
+        }
         this.fuelTicks += duration;
-        this.fuelBoost = Math.max(this.fuelBoost, boost);
         markDirty();
     }
 
@@ -799,24 +757,6 @@ public final class Minion {
         return type != null && (type == upgrade1 || type == upgrade2);
     }
 
-    /** 装备模块到第一个空槽，成功返回 true。 */
-    public boolean equipUpgrade(MinionUpgradeType type) {
-        if (type == null) {
-            return false;
-        }
-        if (upgrade1 == null) {
-            upgrade1 = type;
-            markDirty();
-            return true;
-        }
-        if (upgrade2 == null) {
-            upgrade2 = type;
-            markDirty();
-            return true;
-        }
-        return false;
-    }
-
     /** 卸下指定模块槽（1 或 2）的模块并返回，空槽返回 null。 */
     public MinionUpgradeType removeUpgradeSlot(int slot) {
         MinionUpgradeType removed;
@@ -874,10 +814,6 @@ public final class Minion {
         this.stand = stand;
     }
 
-    public boolean isDirty() {
-        return dirty.get();
-    }
-
     public void markDirty() {
         dirty.set(true);
     }
@@ -892,12 +828,13 @@ public final class Minion {
 
     public MinionData toData() {
         return new MinionData(
-                id, owner, type.key(), level, 0L,
+                id, owner, type.key(), level,
                 location.world(), location.x(), location.y(), location.z(),
                 fuelTicks, lastActiveEpochMs, islandId,
                 upgrade1 == null ? null : upgrade1.key(),
                 upgrade2 == null ? null : upgrade2.key(),
                 skin.key(),
+                autoSell, totalProduced, permanentBoost,
                 serializeStorageItems()
         );
     }
@@ -913,6 +850,9 @@ public final class Minion {
         m.setUpgrade1(MinionUpgradeType.fromKey(d.upgrade1()).orElse(null));
         m.setUpgrade2(MinionUpgradeType.fromKey(d.upgrade2()).orElse(null));
         m.setSkin(MinionSkin.fromKey(d.skin()).orElse(MinionSkin.DEFAULT));
+        m.setAutoSell(d.autoSell());
+        m.addProduced(d.totalProduced());
+        m.setPermanentBoost(Math.max(1.0, d.permanentBoost()));
         m.markClean();
         return m;
     }

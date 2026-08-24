@@ -1,5 +1,6 @@
 package com.hcs.minions.config;
 
+import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.Logs;
 import org.bukkit.Material;
@@ -20,10 +21,11 @@ import java.util.Set;
  */
 public final class ConfigLoader {
 
-    /** 固定仆从头颅贴图（base64 纹理，离线模式也可用）。可在 config.yml 的 head-texture 覆盖。 */
+    /** 固定仆从头颅贴图（base64 纹理，离线模式也可用，已经 Mojang 材质 CDN 可达性验证）。
+     *  可在 config.yml 的 head-texture 覆盖。 */
     private static final String DEFAULT_HEAD_TEXTURE =
             "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
-                    + "YTQyY2M5MjAzYzkwYjg5YmRhYzFkZjI4NDE2NzI2NmI5NTNkZmViZjNjNDY5MGE3Y2QwYjE1NzkxYTYyZTU4MiJ9fX0=";
+                    + "OWFkMDlkZDVkOTQyYjZiZTZhZDYyMWYzYzNlYmJjNmM3MDFkNWMzMDQyZmFmYjJkNmJhM2ZjYTU0YTNjZDYxNyJ9fX0=";
 
     private ConfigLoader() {
     }
@@ -50,12 +52,6 @@ public final class ConfigLoader {
                 yaml.getDouble("economy.price-multiplier", 1.0)
         );
 
-        OfflineConfig offline = new OfflineConfig(
-                yaml.getBoolean("offline.enabled", true),
-                yaml.getInt("offline.max-hours", 48),
-                yaml.getDouble("offline.rate-multiplier", 0.5)
-        );
-
         RenderConfig render = new RenderConfig(
                 (float) yaml.getDouble("render.view-range", 2.0),
                 (float) yaml.getDouble("render.scale", 1.0)
@@ -69,10 +65,13 @@ public final class ConfigLoader {
 
         Map<String, MinionTypeConfig> types = loadTypes(yaml.getConfigurationSection("types"));
 
+        // 皮肤纹理覆盖（skins 段）：与配置同步热重载，空值不覆盖内置纹理
+        MinionSkin.loadTextures(yaml);
+
         CollectionConfig collections = loadCollections(yaml.getConfigurationSection("collections"));
 
         return new PluginConfig(
-                database, economy, offline, render,
+                database, economy, render,
                 yaml.getLong("tick-period", 20),
                 maxChecks,
                 yaml.getInt("max-minions-per-player", 10),
@@ -81,7 +80,10 @@ public final class ConfigLoader {
                 types,
                 collections,
                 yaml.getBoolean("upgrade-require-previous-body", true),
-                yaml.getBoolean("collection-unlock-enabled", true)
+                yaml.getBoolean("collection-unlock-enabled", true),
+                yaml.getDouble("player-scan-radius", 48.0),
+                yaml.getInt("min-placement-distance", 5),
+                yaml.getBoolean("rare-drop-broadcast", true)
         );
     }
 
@@ -102,7 +104,8 @@ public final class ConfigLoader {
                 section == null || section.getBoolean("enabled", true),
                 milestones,
                 section == null ? 100 : section.getLong("coins-base", 100),
-                slotMilestones
+                slotMilestones,
+                section == null ? 5 : section.getInt("max-bonus-slots", 5)
         );
     }
 
@@ -128,6 +131,17 @@ public final class ConfigLoader {
             // 升级配方：多材料 + 陡增曲线；未配 upgrade-recipe 时回退旧 upgrade-item/upgrade-cost 单材料
             Map<ItemRef, Long> upgradeRecipe = parseRecipe(s, product, key);
             double upgradeCostGrowth = Math.max(1.0, s.getDouble("upgrade-cost-growth", 1.15));
+            // 动作间隔：支持单值（全等级统一）或列表（逐级表，对齐 Hypixel 原版提速曲线）
+            int[] cooldownPerLevel;
+            int cooldownBase;
+            Object cdRaw = s.get("cooldown-ticks");
+            if (cdRaw instanceof List<?> cdList && !cdList.isEmpty()) {
+                cooldownPerLevel = cdList.stream().mapToInt(o -> o instanceof Number n ? n.intValue() : 0).toArray();
+                cooldownBase = cooldownPerLevel[0];
+            } else {
+                cooldownBase = s.getInt("cooldown-ticks", 20);
+                cooldownPerLevel = new int[0];
+            }
             // 专属稀有掉落（可空）：未配置或配置错误则关闭
             Material rareDrop = parseMaterialNullable(s.getString("rare-drop"));
             double rareDropChance = s.getDouble("rare-drop-chance", 0.0);
@@ -142,13 +156,14 @@ public final class ConfigLoader {
                     s.getDouble("base-efficiency", 1.0),
                     s.getDouble("efficiency-per-level", 0.1),
                     s.getLong("base-fuel-ticks", 72000),
-                    s.getInt("cooldown-ticks", 20),
+                    cooldownBase,
                     s.getDouble("sell-price-per-unit", 1.0),
                     product,
                     upgradeRecipe,
                     upgradeCostGrowth,
                     s.getInt("base-radius", 2),
                     s.getInt("harvest-cap", 1),
+                    cooldownPerLevel,
                     targets,
                     rareDrop,
                     rareDropChance,

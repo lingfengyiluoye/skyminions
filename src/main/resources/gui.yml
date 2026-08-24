@@ -15,18 +15,20 @@
 title: "仆从 · {name}"
 
 # 信息书(槽3)。占位符: {name} {tier} {speed}=秒/次 {rate}=件/小时 {range}=范围
-#   {storage}=仓存件数 {slots}=已解锁格数 {total}=累计产出 {next}=距下次工作秒数
+#   {storage}=仓存件数 {slots}=已解锁格数 {total}=累计产出 {next}=距下次工作秒数 {status}=状态行
 #   可选: {rare}=稀有掉落物 {rare_chance}=几率%(仅配置了稀有掉落的类型提供)
+#   可选: {halted_tip} 停工恢复提示行（仅仓库满停工时显示）
 info:
   title: "<gold>✦ {name} · 等级 {tier}</gold>"
   lore:
-    - "<gray>状态: <green>● 工作中</green></gray>"
+    - "<gray>状态: {status}</gray>"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<dark_gray>速度 <green>{speed} 秒/次</green></dark_gray>"
     - "<dark_gray>产出 <green>≈ {rate} 件/小时</green></dark_gray>"
     - "<dark_gray>范围 <aqua>{range}</aqua></dark_gray>"
     - "<dark_gray>存储 <white>{storage} 件 / {slots} 格</white></dark_gray>"
     - "<dark_gray>稀有掉落 <light_purple>{rare} ({rare_chance}%)</light_purple></dark_gray>"
+    - "<dark_gray>取货或开启 <gold>自动售卖</gold> 后恢复工作{halted_tip}</dark_gray>"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
     - "<dark_gray>累计产出 <yellow>{total} 件</yellow></dark_gray>"
     - "<dark_gray>下次工作 <green>{next} 秒后</green></dark_gray>"
@@ -54,7 +56,7 @@ upgrade:
     - "{m3}"
     - "{body}"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
-    - "<yellow>点击升级 ▶</yellow>"
+    - "<yellow>点击打开升级合成界面 ▶</yellow>"
 
 # 升级按钮(槽5) - 材料不足。占位符同 upgrade
 upgrade-lack:
@@ -67,7 +69,7 @@ upgrade-lack:
     - "{m3}"
     - "{body}"
     - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
-    - "<gray>材料齐后点击升级</gray>"
+    - "<gray>点击打开升级合成界面（材料需放入合成格）</gray>"
 
 # 升级按钮(槽5) - 已满级。占位符: {tier}=最大等级
 upgrade-max:
@@ -93,7 +95,8 @@ fuel:
     - "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>"
     - "<dark_gray>限时: <gray>煤炭/岩浆桶/烈焰棒</gray></dark_gray>"
     - "<dark_gray>永久: <gray>岩浆膏/荧石粉/日光传感器</gray></dark_gray>"
-    - "<dark_gray>空手点击查看燃料指引 · 手持燃料右键小人也可添加</dark_gray>"
+    - "<dark_gray>空手点击查看燃料指引 · 手持燃料右键小人也可添加（每次 1 个）</dark_gray>"
+    - "<dark_gray>永久燃料不可卸下，多次安装取最高加速</dark_gray>"
 
 # 皮肤卡(槽7)。占位符: {current}=当前皮肤 {next}=下一个皮肤(仅有多皮肤时提供)
 skin:
@@ -268,7 +271,41 @@ fuel-gui:
       - "<dark_gray>限时剩余 <yellow>{left}</yellow></dark_gray>"
       - "<gray>{none}当前无燃料</gray>"
       - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
-      - "<dark_gray>潜行点击卸下限时燃料</dark_gray>"
+      - "<dark_gray>潜行点击卸下限时燃料（永久燃料不可卸下）</dark_gray>"
+
+# ============================================================
+#  升级合成 GUI（点击仆从界面升级按钮打开，6 行 54 格，Hypixel 式合成玩法）
+# ------------------------------------------------------------
+#  把「上一级仆从本体 + 升级材料」放入 3×3 合成格，点击右侧产物合成下一 Tier。
+#  配方来自 config.yml types.<类型>.upgrade-recipe（材料随等级按 upgrade-cost-growth 陡增），
+#  是否需本体由 upgrade-require-previous-body 开关决定。
+# ============================================================
+craft-gui:
+  # 界面标题。占位符: {name}=类型名 {tier}=当前等级
+  title: "<gold>升级合成 · {name} 等级 {tier}</gold>"
+  # 顶行配方信息卡。占位符: {tier}=当前等级 {next}=目标等级
+  #   {m1}~{m3}=逐材料需求/已放对比行, 可选 {body}=本体需求行(仅开关开启时提供)
+  info:
+    title: "<gold>升级配方 · 等级 {tier} → {next}</gold>"
+    lore:
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "{m1}"
+      - "{m2}"
+      - "{m3}"
+      - "{body}"
+      - "<dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>"
+      - "<gray>把材料与本体放入左侧合成格</gray>"
+      - "<yellow>材料齐后点击右侧产物合成 ▶</yellow>"
+  # 结果槽占位（材料未集齐时显示）
+  result-lack:
+    title: "<gray>材料未集齐</gray>"
+    lore:
+      - "<gray>按左侧配方放入材料与本体</gray>"
+      - "<yellow>潜行点击信息卡可一键填充</yellow>"
+  arrow:
+    title: "<gray>合成</gray>"
+  back:
+    title: "<yellow>◀ 返回仆从界面</yellow>"
 
 # ============================================================
 #  GUI 布局配置（槽位与图标材质，与文案同样支持热重载）
@@ -276,7 +313,7 @@ fuel-gui:
 #  · 槽位: 整数或 "a-b" 区间字符串, 如 [9-44, 49]
 #  · 材质: 大写物品名, 如 GOLD_INGOT / ARMOR_STAND
 #  · 删除任意键即回退内置默认; 越界/无效值会告警并回退
-#  · 仓库/图鉴为 54 格界面, 燃料选择为 27 格界面
+#  · 仓库/图鉴/升级合成为 54 格界面, 燃料选择为 27 格界面
 #  · 布局变化在下次打开对应 GUI 时生效
 # ============================================================
 layout:
@@ -368,3 +405,23 @@ layout:
     close:
       slot: 26
       material: BARRIER
+
+  # ---- 升级合成 GUI（54 格） ----
+  craft:
+    grid:
+      slots: [11, 12, 13, 20, 21, 22, 29, 30, 31]  # 3×3 合成格（自由取放）
+    arrow:
+      slot: 23                         # 合成箭头（装饰）
+      material: ARROW
+    result:
+      slot: 24                         # 结果槽：材料齐时显示下一级仆从，点击合成
+    info:
+      slot: 4                          # 配方信息卡（潜行点击 = 从背包一键填充）
+    back:
+      slot: 49
+      material: ARROW
+    decor:
+      slots: [0-3, 5-10, 14-19, 25-28, 32-48, 50-53]
+      material: BLACK_STAINED_GLASS_PANE
+    lack:
+      material: GRAY_STAINED_GLASS_PANE  # 材料未集齐时的结果槽占位

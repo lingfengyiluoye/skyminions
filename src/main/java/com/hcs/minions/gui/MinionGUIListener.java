@@ -2,7 +2,6 @@ package com.hcs.minions.gui;
 
 import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.config.PluginConfig;
-import com.hcs.minions.event.MinionLevelUpEvent;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
@@ -12,12 +11,12 @@ import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.MinionUpgradeType;
-import com.hcs.minions.upgrade.UpgradeRules;
 import com.hcs.minions.upgrade.UpgradeService;
-import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
-import org.bukkit.Bukkit;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -77,13 +76,13 @@ public final class MinionGUIListener implements Listener {
         }
         if (slot == Minion.upgradeSlot()) {
             event.setCancelled(true);
-            upgrade(player, minion);
+            openCraft(player, minion);
             return;
         }
         if (slot == Minion.autosellSlot()) {
             event.setCancelled(true);
             minion.setAutoSell(!minion.autoSell());
-            minion.refresh(config.type(minion.type()));
+            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
             player.sendMessage(Messages.autoSellToggled(minion.autoSell()));
             return;
         }
@@ -213,7 +212,7 @@ public final class MinionGUIListener implements Listener {
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
             player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
         }
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         manager.save(minion);
     }
 
@@ -225,7 +224,7 @@ public final class MinionGUIListener implements Listener {
         }
         minion.setFuelTicks(0);
         minion.setFuelBoost(1.0);
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.fuelUnequipped());
     }
@@ -286,7 +285,7 @@ public final class MinionGUIListener implements Listener {
             if (cursor.getAmount() <= 0) {
                 event.setCursor(null);
             }
-            minion.refresh(config.type(minion.type()));
+            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
             player.sendMessage(Messages.upgradeEquipped(type.displayName()));
             return;
         }
@@ -294,7 +293,7 @@ public final class MinionGUIListener implements Listener {
         MinionUpgradeType removed = minion.removeUpgradeSlot(slotNum);
         if (removed != null) {
             giveOrDrop(player, upgrades.createItem(removed));
-            minion.refresh(config.type(minion.type()));
+            minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
             player.sendMessage(Messages.upgradeRemoved(removed.displayName()));
         } else {
             player.sendMessage(Messages.UPGRADE_SLOT_EMPTY);
@@ -308,7 +307,7 @@ public final class MinionGUIListener implements Listener {
         minion.setSkin(skins[next]);
         // 刷新盔甲架外观（头盔贴图随皮肤变化），而非只改内存字段
         entities.refreshAppearance(minion);
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.skinChanged(minion.skin().displayName()));
     }
@@ -322,7 +321,7 @@ public final class MinionGUIListener implements Listener {
                 minion.cleanupLayoutBlocks(); // 关闭时还原摆放的水/岩浆
             }
             minion.setIdealLayout(on);
-            minion.refresh(cfg);
+            minion.refresh(cfg, config.upgradeRequirePreviousBody());
             manager.save(minion);
             player.sendMessage(on ? Messages.layoutEnabled() : Messages.layoutDisabled());
             return;
@@ -336,87 +335,14 @@ public final class MinionGUIListener implements Listener {
         player.sendMessage(Messages.LAYOUT_TIP_SHARED);
     }
 
-    private void upgrade(Player player, Minion minion) {
+    /** 打开 Hypixel 式合成升级界面：3×3 合成格放入上一级本体 + 材料合成下一 Tier。 */
+    private void openCraft(Player player, Minion minion) {
         MinionTypeConfig cfg = config.type(minion.type());
         if (minion.level() >= cfg.maxLevel()) {
             player.sendMessage(Messages.MAX_LEVEL);
             return;
         }
-        Map<ItemRef, Long> recipe = cfg.recipeFor(minion.level());
-        // 先只读校验材料 + 本体，全部齐备才一起扣（避免扣了材料才发现缺本体）
-        Map<ItemRef, Long> missing = minion.missingRecipe(recipe);
-        if (!missing.isEmpty()) {
-            player.sendMessage(Messages.upgradeFailed(formatMissing(missing)));
-            return;
-        }
-        boolean needBody = UpgradeRules.needsPreviousBody(
-                minion.level(), cfg.maxLevel(), config.upgradeRequirePreviousBody());
-        if (needBody && !hasPreviousBody(player, minion)) {
-            player.sendMessage(Messages.upgradeMissingBody(cfg.displayName(), minion.level()));
-            return;
-        }
-        minion.consumeRecipe(recipe);
-        if (needBody) {
-            consumePreviousBody(player, minion);
-        }
-        minion.upgrade(cfg);
-        Bukkit.getPluginManager().callEvent(new MinionLevelUpEvent(minion, minion.level()));
-        minion.refresh(cfg);
-        player.sendMessage(Messages.upgradeSuccess(minion.level()));
-    }
-
-    /** 匹配「当前等级的同类型仆从生成物」（合成升级的上一级本体）。 */
-    private boolean isPreviousBody(ItemStack item, Minion minion) {
-        if (item == null || item.getType() != Material.PLAYER_HEAD) {
-            return false;
-        }
-        return items.parseType(item).map(t -> t == minion.type()).orElse(false)
-                && items.parseLevel(item) == minion.level();
-    }
-
-    /** 检查仓库或背包中是否存在上一级本体（不扣除）。 */
-    private boolean hasPreviousBody(Player player, Minion minion) {
-        if (minion.findSlot(item -> isPreviousBody(item, minion)) >= 0) {
-            return true;
-        }
-        for (ItemStack item : player.getInventory().getStorageContents()) {
-            if (isPreviousBody(item, minion)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** 扣除 1 个上一级本体：优先仆从仓库，其次玩家背包。 */
-    private void consumePreviousBody(Player player, Minion minion) {
-        int slot = minion.findSlot(item -> isPreviousBody(item, minion));
-        if (slot >= 0) {
-            minion.takeOne(slot);
-            return;
-        }
-        ItemStack[] contents = player.getInventory().getStorageContents();
-        for (int i = 0; i < contents.length; i++) {
-            if (isPreviousBody(contents[i], minion)) {
-                contents[i].setAmount(contents[i].getAmount() - 1);
-                if (contents[i].getAmount() <= 0) {
-                    contents[i] = null;
-                }
-                player.getInventory().setStorageContents(contents);
-                return;
-            }
-        }
-    }
-
-    /** 缺失材料清单格式化为 "红石 ×8、煤炭 ×16" 供提示。 */
-    private static String formatMissing(Map<ItemRef, Long> missing) {
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<ItemRef, Long> e : missing.entrySet()) {
-            if (sb.length() > 0) {
-                sb.append("、");
-            }
-            sb.append(e.getKey().displayName()).append(" ×").append(e.getValue());
-        }
-        return sb.toString();
+        UpgradeCraftGui.open(player, minion, items, config);
     }
 
     private void collectAll(Player player, Minion minion) {
@@ -426,12 +352,20 @@ public final class MinionGUIListener implements Listener {
             return;
         }
         giveOrDrop(player, collected.toArray(new ItemStack[0]));
-        minion.refresh(config.type(minion.type()));
+        minion.refresh(config.type(minion.type()), config.upgradeRequirePreviousBody());
         player.sendMessage(Messages.COLLECTED_ALL);
     }
 
     private void pickup(Player player, Minion minion) {
-        ItemStack spawner = items.createItemFromMinion(minion);
+        ItemStack spawner;
+        try {
+            spawner = items.createItemFromMinion(minion);
+        } catch (Exception e) {
+            // 生成物异常时不移除、不关界面（玩家可重试）；留日志便于定位
+            Logs.error("拾取失败（生成物构造异常）: id=" + minion.id() + ", type=" + minion.type(), e);
+            player.sendMessage(Component.text("拾取失败：物品生成异常，详情见控制台日志", NamedTextColor.RED));
+            return;
+        }
         player.closeInventory();
         minion.cleanupLayoutBlocks(); // 拾取时还原理想布局摆放的水/岩浆
         manager.remove(minion, player);

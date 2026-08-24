@@ -1,10 +1,8 @@
 package com.hcs.minions.command;
 
 import com.hcs.minions.config.ConfigProvider;
-import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
-import com.hcs.minions.service.CollectionService;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.upgrade.MinionUpgradeType;
@@ -33,21 +31,19 @@ public final class MinionCommand extends Command {
     private final MinionManager manager;
     private final UpgradeService upgrades;
     private final ConfigProvider config;
-    private final CollectionService collection;
     private final JavaPlugin plugin;
 
     public MinionCommand(MinionItemService items, MinionManager manager, UpgradeService upgrades, ConfigProvider config,
-                         CollectionService collection, JavaPlugin plugin) {
+                         JavaPlugin plugin) {
         super("minion");
         this.items = items;
         this.manager = manager;
         this.upgrades = upgrades;
         this.config = config;
-        this.collection = collection;
         this.plugin = plugin;
         setDescription("SkyMinions 管理命令");
         setPermission("hcs.minions.admin");
-        setUsage("/minion <give <type> [level] | upgrade <module> | skin | collection | reload | purge | list>");
+        setUsage("/minion <give <type> [level] | upgrade <module> | skin | reload | purge | list>（图鉴/合成见 /minions）");
     }
 
     @Override
@@ -62,7 +58,6 @@ public final class MinionCommand extends Command {
             case "skin" -> listSkins(sender);
             case "reload" -> reload(sender);
             case "purge" -> purge(sender);
-            case "collection" -> showCollection(sender);
             case "list" -> sender.sendMessage(Messages.totalMinions(manager.all().size()));
             default -> sender.sendMessage(Messages.UNKNOWN_COMMAND);
         }
@@ -125,7 +120,7 @@ public final class MinionCommand extends Command {
     }
 
     private void reload(CommandSender sender) {
-        Minion.requirePreviousBody = config.reload().upgradeRequirePreviousBody(); // 重载后同步升级本体开关
+        config.reload(); // 升级本体开关等配置由消费方直接从配置快照读取，无需静态同步
         Messages.load(plugin);
         GuiText.load(plugin);
         ItemRef.clearCache(); // CraftEngine 自定义物品原型可能在重载后重定义
@@ -137,35 +132,10 @@ public final class MinionCommand extends Command {
         sender.sendMessage(Messages.purged(removed));
     }
 
-    private void showCollection(CommandSender sender) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(Messages.PLAYER_ONLY);
-            return;
-        }
-        java.util.Map<String, long[]> progress = collection.progressOf(player.getUniqueId());
-        if (progress.isEmpty()) {
-            player.sendMessage(Messages.COLLECTION_EMPTY);
-            return;
-        }
-        player.sendMessage(Messages.COLLECTION_HEADER);
-        progress.forEach((material, p) -> {
-            player.sendMessage(Messages.collectionEntry(material, p[0]));
-            if (p[1] > 0) {
-                player.sendMessage(Messages.collectionNext(p[0], p[1]));
-            } else {
-                player.sendMessage(Messages.COLLECTION_COMPLETE);
-            }
-        });
-        int bonus = collection.bonusSlots(player.getUniqueId());
-        if (bonus > 0) {
-            player.sendMessage(Messages.collectionSlotBonus(bonus));
-        }
-    }
-
     @Override
     public @NotNull List<String> tabComplete(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return List.of("give", "upgrade", "skin", "collection", "reload", "purge", "list");
+            return List.of("give", "upgrade", "skin", "reload", "purge", "list");
         }
         if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
             return Arrays.stream(MinionType.values()).map(MinionType::key).toList();

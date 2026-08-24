@@ -13,7 +13,6 @@ public record MinionData(
         UUID owner,
         String type,
         int level,
-        long xp,
         String world,
         int x,
         int y,
@@ -24,6 +23,9 @@ public record MinionData(
         String upgrade1,
         String upgrade2,
         String skin,
+        boolean autoSell,
+        long totalProduced,
+        double permanentBoost,
         byte[] inventory
 ) {
 }

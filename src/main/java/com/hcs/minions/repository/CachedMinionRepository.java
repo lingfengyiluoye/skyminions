@@ -138,6 +138,11 @@ public final class CachedMinionRepository implements MinionRepository {
         }
         for (MinionData snapshot : snapshots) {
             async.run(() -> {
+                // 快照生成后若仆从已被拾取/移除（delete 同步清 cache），丢弃该次 upsert，
+                // 否则虚拟线程无序执行下 upsert 可能跑在 delete 之后，导致仆从"复活"
+                if (!cache.containsKey(snapshot.id())) {
+                    return;
+                }
                 try {
                     store.upsert(snapshot);
                 } catch (Exception e) {
@@ -175,7 +180,7 @@ public final class CachedMinionRepository implements MinionRepository {
         MinionTypeConfig typeConfig = config.type(type);
         Minion minion = Minion.fromData(d);
         if (typeConfig != null) {
-            minion.refresh(typeConfig);
+            minion.refresh(typeConfig, config.upgradeRequirePreviousBody());
         }
         return minion;
     }
@@ -198,10 +203,12 @@ public final class CachedMinionRepository implements MinionRepository {
             try {
                 store.upsert(minion.toData());
                 minion.markClean();
+                dirty.remove(id);
             } catch (Exception e) {
-                Logs.error("关闭时落库失败: " + id, e);
+                // 失败时保留脏标记（与 flushSnapshots 异步路径口径一致），
+                // 避免瞬时 IO 错误（如 Windows 文件锁）直接丢数据
+                Logs.error("关闭时落库失败，脏标记保留待重试: " + id, e);
             }
-            dirty.remove(id);
         }
     }
 
