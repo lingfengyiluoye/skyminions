@@ -43,6 +43,9 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
         m.put(Material.DARK_OAK_LOG, Material.DARK_OAK_SAPLING);
         m.put(Material.MANGROVE_LOG, Material.MANGROVE_PROPAGULE);
         m.put(Material.CHERRY_LOG, Material.CHERRY_SAPLING);
+        // 下界巨型菌树：补种对应真菌（菌岩上可正常生长）
+        m.put(Material.CRIMSON_STEM, Material.CRIMSON_FUNGUS);
+        m.put(Material.WARPED_STEM, Material.WARPED_FUNGUS);
         return m;
     }
 

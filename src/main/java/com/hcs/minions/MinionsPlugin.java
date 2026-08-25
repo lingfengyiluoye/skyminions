@@ -10,7 +10,9 @@ import com.hcs.minions.core.ServiceRegistry;
 import com.hcs.minions.gui.CollectionGui;
 import com.hcs.minions.gui.CollectionGuiListener;
 import com.hcs.minions.gui.FuelGuiListener;
+import com.hcs.minions.gui.GuideListListener;
 import com.hcs.minions.gui.MinionGUIListener;
+import com.hcs.minions.gui.RecipePreviewListener;
 import com.hcs.minions.gui.UpgradeCraftGuiListener;
 import com.hcs.minions.listener.MinionInteractionListener;
 import com.hcs.minions.listener.SlayerDeathListener;
@@ -119,6 +121,8 @@ public final class MinionsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new FuelGuiListener(manager, configProvider), this);
         getServer().getPluginManager().registerEvents(
                 new UpgradeCraftGuiListener(this, manager, itemService, configProvider, skyblock), this);
+        getServer().getPluginManager().registerEvents(new RecipePreviewListener(), this);
+        getServer().getPluginManager().registerEvents(new GuideListListener(), this);
         getServer().getPluginManager().registerEvents(new SlayerDeathListener(), this);
 
         getServer().getCommandMap().register("skyminions", new MinionCommand(itemService, manager, upgrades, configProvider, this));

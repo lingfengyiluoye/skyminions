@@ -41,7 +41,7 @@ auto-sell-toggled: "<green>✔ 自动出售已{0}</green>"
 upgrade-equipped: "<green>✔ 已装备模块</green>\n<aqua>{0}</aqua>"
 upgrade-removed: "<green>✔ 已卸下模块</green>\n<aqua>{0}</aqua> 已返还到背包"
 skin-changed: "<light_purple>✔ 皮肤已切换</light_purple>\n<light_purple>{0}</light_purple>"
-upgrade-failed: "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>"
+upgrade-failed: "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料与本体放入升级合成格后再试</gray>"
 upgrade-missing-body: "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>"
 upgrade-success: "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>"
 

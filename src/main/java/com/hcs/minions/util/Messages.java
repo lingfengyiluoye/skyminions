@@ -44,6 +44,11 @@ public final class Messages {
     public static Component MUST_PLACE_ON_ISLAND;
     public static Component LOCATION_OCCUPIED;
     public static Component MINION_TOO_CLOSE;
+
+    /** 间距过近提示（带当前配置的最小间距数字）。 */
+    public static Component minionTooClose(int minDistance) {
+        return render("minion-too-close", Math.max(1, minDistance));
+    }
     public static Component LIMIT_REACHED;
     public static Component NOT_YOUR_MINION;
     public static Component PLAYER_ONLY;
@@ -81,7 +86,7 @@ public final class Messages {
         DEFAULTS.put("no-permission", "<red>✖ 你没有权限使用该仆从</red>");
         DEFAULTS.put("must-place-on-island", "<red>✖ 仆从只能放置在 <gold>你的空岛</gold> 内</red>");
         DEFAULTS.put("limit-reached", "<red>✖ 仆从数量已达上限</red>\n<gray>升级权限 <gold>minions.limit.\\<数量></gold> 可增加上限</gray>");
-        DEFAULTS.put("minion-too-close", "<red>✖ 离其他仆从太近了</red>\n<gray>两个仆从的工作区不能重叠，请换个位置</gray>");
+        DEFAULTS.put("minion-too-close", "<red>✖ 离其他仆从太近了</red>\n<gray>请与最近的仆从保持至少 <yellow>{0}</yellow> 格距离（可在 config 调整）</gray>");
         DEFAULTS.put("not-your-minion", "<red>✖ 无法操作该仆从</red>\n<gray>仅限仆从主人或所在空岛的团队成员使用</gray>");
         DEFAULTS.put("player-only", "<red>✖ 该命令仅玩家可执行</red>");
         DEFAULTS.put("unknown-command", "<red>✖ 未知子命令，输入 <gold>/minion</gold> 查看帮助</red>");
@@ -105,7 +110,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-equipped", "<green>✔ 已装备模块</green>\n<aqua>{0}</aqua>");
         DEFAULTS.put("upgrade-removed", "<green>✔ 已卸下模块</green>\n<aqua>{0}</aqua> 已返还到背包");
         DEFAULTS.put("skin-changed", "<light_purple>✔ 皮肤已切换</light_purple>\n<light_purple>{0}</light_purple>");
-        DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料放进仆从仓库后再试</gray>");
+        DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料与本体放入升级合成格后再试</gray>");
         DEFAULTS.put("upgrade-missing-body", "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>");
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
         DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion materials \\<类型> [等级]</white> <gray>- 材料获取指南</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
@@ -146,6 +151,7 @@ public final class Messages {
         DEFAULTS.put("materials-header", "<gold><bold>▼ 材料指南 · {0}</bold></gold> <gray>{1} → {2}</gray>");
         DEFAULTS.put("materials-entry", "<white>· {0}</white> <yellow>×{1}</yellow>");
         DEFAULTS.put("materials-override-note", "<light_purple>✦ 本级为专属覆盖配方（含稀有秘藏）</light_purple>");
+        DEFAULTS.put("materials-hint", "<gray>提示：在升级合成界面点击「材料指南」可查看图形化合成摆法</gray>");
         DEFAULTS.put("materials-base-note", "<gray>以上为该级完整需求；基础配方随等级 ×growth 陡增</gray>");
     }
 
@@ -378,6 +384,11 @@ public final class Messages {
     }
 
     /** 基础曲线说明行。 */
+    /** 指向图形化合成预览的提示。 */
+    public static Component materialsHint() {
+        return render("materials-hint");
+    }
+
     public static Component materialsBaseNote() {
         return render("materials-base-note");
     }

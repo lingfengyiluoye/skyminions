@@ -32,8 +32,7 @@ collection-unlock-enabled: true
 # 玩家活动半径（方块）：半径内无玩家时仆从休眠不产出，对齐 Hypixel；0 = 永不休眠
 player-scan-radius: 48
 
-# 仆从间最小间距（水平切比雪夫距离，同世界）：防止工作区重叠；5 = 两个 5x5 恰好不重叠，0 = 不限制
-min-placement-distance: 5
+
 
 # 稀有掉落播报方式：true = 全服广播；false = 仅私聊通知主人
 rare-drop-broadcast: true
@@ -43,6 +42,10 @@ rare-drop-broadcast: true
 #   ② 仅基础速度：不吃燃料加速/产量倍率/布局加成（在线照料专属奖励）
 #   ③ 燃料真实燃烧：闲置时长从燃料剩余中等额扣除
 # 触发时机：仆从主人本人上线时一次性结算「区块未加载/半径无人/离线」的整段闲置窗
+# 仆从间最小间距（水平切比雪夫距离）：1 = 允许贴身连放（对齐 Hypixel，只禁同格）；
+# 调大可防止工作区重叠。0 = 不限制
+min-placement-distance: 1
+
 offline-production:
   enabled: true        # 总开关
   max-hours: 24        # 单次结算最长回溯时长（小时）
@@ -944,3 +947,337 @@ types:
       '12':
         COBBLESTONE: 1024
         OBSIDIAN: 32
+  # ===================== 长尾扩容（对齐 Hypixel 内容广度） =====================
+  #  · 花卉/蘑菇/甘蔗/仙人掌：无生长阶段或特殊支撑，自动种植按原版规则处理
+  #  · 下界菌树（绯红/诡异）补种对应真菌，需菌岩地面
+  冰雪仆从:
+    behavior: MINING
+    display-name: "冰雪仆从"
+    icon: ICE
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.2
+    product: ICE
+    targets: [ICE, PACKED_ICE, BLUE_ICE]
+    upgrade-recipe:
+      SNOWBALL: 32
+      ICE: 24
+      LAPIS_BLOCK: 2
+    rare-drop: BLUE_ICE
+    rare-drop-chance: 0.004
+    unlock-amount: 120
+    upgrade-recipe-at:
+      '12':
+        ICE: 320
+        PACKED_ICE: 48
+        BLUE_ICE: 16
+
+  雪人仆从:
+    behavior: MINING
+    display-name: "雪人仆从"
+    icon: SNOWBALL
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 0.9
+    product: SNOWBALL
+    targets: [SNOW, SNOW_BLOCK]
+    upgrade-recipe:
+      SNOWBALL: 64
+      SNOW_BLOCK: 24
+      ICE: 8
+    rare-drop: PACKED_ICE
+    rare-drop-chance: 0.004
+    unlock-amount: 90
+    upgrade-recipe-at:
+      '12':
+        SNOWBALL: 512
+        ICE: 64
+        PACKED_ICE: 24
+
+  黏土仆从:
+    behavior: MINING
+    display-name: "黏土仆从"
+    icon: CLAY_BALL
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.0
+    product: CLAY_BALL
+    targets: [CLAY]
+    upgrade-recipe:
+      CLAY_BALL: 48
+      CLAY: 24
+      BAMBOO_BLOCK: 2
+    rare-drop: BRICKS
+    rare-drop-chance: 0.004
+    unlock-amount: 100
+    upgrade-recipe-at:
+      '12':
+        CLAY_BALL: 384
+        BAMBOO_BLOCK: 56
+        BRICKS: 24
+
+  沙砾仆从:
+    behavior: MINING
+    display-name: "沙砾仆从"
+    icon: GRAVEL
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 0.9
+    product: GRAVEL
+    targets: [GRAVEL]
+    upgrade-recipe:
+      GRAVEL: 56
+      GUNPOWDER: 16
+      PRISMARINE_BRICKS: 2
+    rare-drop: FLINT_AND_STEEL
+    rare-drop-chance: 0.003
+    unlock-amount: 95
+    upgrade-recipe-at:
+      '12':
+        GRAVEL: 448
+        PRISMARINE_BRICKS: 56
+        FLINT_AND_STEEL: 8
+
+  沙漠仆从:
+    behavior: MINING
+    display-name: "沙漠仆从"
+    icon: SAND
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 0.7
+    product: SAND
+    targets: [SAND, RED_SAND]
+    upgrade-recipe:
+      SAND: 72
+      DEAD_BUSH: 16
+      BAMBOO_BLOCK: 2
+    rare-drop: ARMADILLO_SCUTE
+    rare-drop-chance: 0.004
+    unlock-amount: 85
+    upgrade-recipe-at:
+      '12':
+        SAND: 576
+        BAMBOO_BLOCK: 64
+        ARMADILLO_SCUTE: 16
+
+  花卉仆从:
+    behavior: MINING
+    display-name: "花卉仆从"
+    icon: POPPY
+    category: FARMING
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.1
+    product: POPPY
+    targets: [POPPY, DANDELION, AZURE_BLUET, OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY, WHITE_TULIP, ORANGE_TULIP, RED_TULIP, PINK_TULIP]
+    upgrade-recipe:
+      POPPY: 32
+      DANDELION: 32
+      BONE_BLOCK: 2
+    rare-drop: TORCHFLOWER_SEEDS
+    rare-drop-chance: 0.005
+    unlock-amount: 95
+    upgrade-recipe-at:
+      '12':
+        POPPY: 256
+        BONE_BLOCK: 48
+        TORCHFLOWER_SEEDS: 12
+
+  蘑菇仆从:
+    behavior: MINING
+    display-name: "蘑菇仆从"
+    icon: RED_MUSHROOM
+    category: FARMING
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.3
+    product: RED_MUSHROOM
+    targets: [RED_MUSHROOM, BROWN_MUSHROOM]
+    upgrade-recipe:
+      RED_MUSHROOM: 32
+      BROWN_MUSHROOM: 32
+      BONE_BLOCK: 2
+    rare-drop: MYCELIUM
+    rare-drop-chance: 0.005
+    unlock-amount: 105
+    upgrade-recipe-at:
+      '12':
+        RED_MUSHROOM: 256
+        BONE_BLOCK: 48
+        MYCELIUM: 24
+
+  甘蔗仆从:
+    behavior: FARMING
+    display-name: "甘蔗仆从"
+    icon: SUGAR_CANE
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.9
+    product: SUGAR_CANE
+    targets: [SUGAR_CANE]
+    upgrade-recipe:
+      SUGAR_CANE: 64
+      SUGAR: 16
+      HAY_BLOCK: 2
+    rare-drop: SUGAR
+    rare-drop-chance: 0.006
+    unlock-amount: 85
+    upgrade-recipe-at:
+      '12':
+        SUGAR_CANE: 512
+        HAY_BLOCK: 64
+        SUGAR: 48
+
+  仙人掌仆从:
+    behavior: FARMING
+    display-name: "仙人掌仆从"
+    icon: CACTUS
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 220, 220, 200, 200, 180, 180, 160, 160]
+    sell-price-per-unit: 0.8
+    product: CACTUS
+    targets: [CACTUS]
+    upgrade-recipe:
+      CACTUS: 56
+      GREEN_DYE: 16
+      HAY_BLOCK: 2
+    rare-drop: GREEN_DYE
+    rare-drop-chance: 0.006
+    unlock-amount: 80
+    upgrade-recipe-at:
+      '12':
+        CACTUS: 448
+        HAY_BLOCK: 64
+        GREEN_DYE: 40
+
+  绯红仆从:
+    behavior: FORAGING
+    display-name: "绯红仆从"
+    icon: CRIMSON_STEM
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.4
+    product: CRIMSON_STEM
+    targets: [CRIMSON_STEM]
+    upgrade-recipe:
+      CRIMSON_STEM: 56
+      NETHERRACK: 24
+      BONE_BLOCK: 2
+    rare-drop: CRIMSON_FUNGUS
+    rare-drop-chance: 0.006
+    unlock-amount: 115
+    upgrade-recipe-at:
+      '12':
+        CRIMSON_STEM: 448
+        BONE_BLOCK: 56
+        CRIMSON_FUNGUS: 32
+
+  诡异仆从:
+    behavior: FORAGING
+    display-name: "诡异仆从"
+    icon: WARPED_STEM
+    max-level: 12
+    cooldown-ticks: [960, 960, 900, 900, 840, 840, 760, 760, 660, 660, 540, 540]
+    sell-price-per-unit: 1.5
+    product: WARPED_STEM
+    targets: [WARPED_STEM]
+    upgrade-recipe:
+      WARPED_STEM: 52
+      NETHERRACK: 24
+      BONE_BLOCK: 2
+    rare-drop: CHORUS_FRUIT
+    rare-drop-chance: 0.005
+    unlock-amount: 125
+    upgrade-recipe-at:
+      '12':
+        WARPED_STEM: 416
+        BONE_BLOCK: 56
+        CHORUS_FRUIT: 32
+
+  岩浆怪猎人:
+    behavior: COMBAT
+    display-name: "岩浆怪猎人"
+    icon: MAGMA_CREAM
+    preferred-targets: [MAGMA_CUBE]
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.3
+    product: MAGMA_CREAM
+    upgrade-recipe:
+      MAGMA_CREAM: 36
+      NETHERRACK: 24
+      BONE_BLOCK: 2
+    rare-drop: MAGMA_BLOCK
+    rare-drop-chance: 0.004
+    unlock-amount: 135
+    upgrade-recipe-at:
+      '12':
+        MAGMA_CREAM: 288
+        BONE_BLOCK: 64
+        MAGMA_BLOCK: 24
+
+  凋灵骷髅猎人:
+    behavior: COMBAT
+    display-name: "凋灵骷髅猎人"
+    icon: COAL
+    preferred-targets: [WITHER_SKELETON]
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.8
+    product: COAL
+    upgrade-recipe:
+      BONE: 56
+      COAL: 32
+      BONE_BLOCK: 2
+    rare-drop: WITHER_SKELETON_SKULL
+    rare-drop-chance: 0.0015
+    unlock-amount: 170
+    upgrade-recipe-at:
+      '12':
+        BONE: 448
+        BONE_BLOCK: 64
+        WITHER_SKELETON_SKULL: 4
+
+  蜂蜜仆从:
+    behavior: MINING
+    display-name: "蜂蜜仆从"
+    icon: HONEYCOMB
+    max-level: 12
+    cooldown-ticks: [300, 300, 260, 260, 240, 240, 200, 200, 180, 180, 140, 140]
+    sell-price-per-unit: 1.4
+    product: HONEYCOMB
+    targets: [BEE_NEST, BEEHIVE]
+    upgrade-recipe:
+      HONEYCOMB: 32
+      HONEY_BOTTLE: 12
+      BONE_BLOCK: 2
+    rare-drop: HONEY_BOTTLE
+    rare-drop-chance: 0.006
+    unlock-amount: 105
+    upgrade-recipe-at:
+      '12':
+        HONEYCOMB: 256
+        BONE_BLOCK: 48
+        HONEY_BOTTLE: 32
+
+  猪灵猎人:
+    behavior: COMBAT
+    display-name: "猪灵猎人"
+    icon: GOLD_NUGGET
+    preferred-targets: [PIGLIN, PIGLIN_BRUTE]
+    max-level: 12
+    cooldown-ticks: [520, 520, 480, 480, 440, 440, 400, 400, 340, 340, 260, 260]
+    sell-price-per-unit: 2.0
+    product: GOLD_NUGGET
+    upgrade-recipe:
+      GOLD_NUGGET: 48
+      GOLD_INGOT: 12
+      BONE_BLOCK: 2
+    rare-drop: CROSSBOW
+    rare-drop-chance: 0.004
+    unlock-amount: 140
+    upgrade-recipe-at:
+      '12':
+        GOLD_NUGGET: 384
+        BONE_BLOCK: 64
+        CROSSBOW: 8

@@ -9,6 +9,7 @@ import com.hcs.minions.upgrade.MinionUpgradeType;
 import com.hcs.minions.upgrade.UpgradeService;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.Messages;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
@@ -161,19 +162,26 @@ public final class MinionCommand extends Command {
             sender.sendMessage(Messages.MAX_LEVEL);
             return;
         }
-        sender.sendMessage(Messages.materialsHeader(cfg.displayName(),
-                com.hcs.minions.util.Roman.of(level), com.hcs.minions.util.Roman.of(level + 1)));
-        if (cfg.overrideLevels().contains(level)) {
-            sender.sendMessage(Messages.materialsOverrideNote());
-        }
-        for (var e : cfg.recipeFor(level).entrySet()) {
-            Material mat = e.getKey().guideMaterial();
-            sender.sendMessage(Messages.materialsEntry(e.getKey().displayName(), e.getValue()));
-            for (var line : com.hcs.minions.util.MaterialGuide.chatLines(mat)) {
-                sender.sendMessage(line);
+        try {
+            sender.sendMessage(Messages.materialsHeader(cfg.displayName(),
+                    com.hcs.minions.util.Roman.of(level), com.hcs.minions.util.Roman.of(level + 1)));
+            if (cfg.overrideLevels().contains(level)) {
+                sender.sendMessage(Messages.materialsOverrideNote());
             }
+            for (var e : cfg.recipeFor(level).entrySet()) {
+                Material mat = e.getKey().guideMaterial();
+                sender.sendMessage(Messages.materialsEntry(e.getKey().displayName(), e.getValue()));
+                for (var line : com.hcs.minions.util.MaterialGuide.chatLines(mat)) {
+                    sender.sendMessage(line);
+                }
+            }
+            sender.sendMessage(Messages.materialsBaseNote());
+            sender.sendMessage(Messages.materialsHint());
+        } catch (Throwable t) {
+            // 兜底：指南生成失败只影响本条命令，绝不允许异常上抛带崩服务器
+            Logs.error("材料指南生成失败: type=" + type.key() + ", level=" + level, t);
+            sender.sendMessage("§c材料指引生成失败，详情见控制台日志");
         }
-        sender.sendMessage(Messages.materialsBaseNote());
     }
 
     private void listSkins(CommandSender sender) {

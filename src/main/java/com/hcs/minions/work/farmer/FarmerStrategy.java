@@ -38,6 +38,10 @@ public final class FarmerStrategy implements MinionWorkStrategy {
     private static final Set<Material> TILLABLE =
             EnumSet.of(Material.DIRT, Material.GRASS_BLOCK, Material.PODZOL);
 
+    /** 可自动播种的作物（仅限种在耕地的传统作物）。 */
+    private static final java.util.Set<Material> AUTO_PLANTABLE =
+            java.util.EnumSet.of(Material.WHEAT, Material.CARROTS, Material.POTATOES, Material.BEETROOTS);
+
     /** 作物方块 -> 产物映射。 */
     private static final Map<Material, Material> PRODUCTS = Map.of(
             Material.WHEAT, Material.WHEAT,
@@ -101,9 +105,14 @@ public final class FarmerStrategy implements MinionWorkStrategy {
      * 自动开垦播种：扫描与仆从同层的空气位，下方为可耕地系方块时开垦并播种。
      * 每周期最多 {@link #PLANTS_PER_CYCLE} 格；只填空地，绝不覆盖玩家建筑；
      * 开垦的耕地与播下的种子都登记到布局块（关闭/拾取时还原）。
+     *
+     * <p>仅对「可种在耕地的传统作物」自动播种（小麦/胡萝卜/马铃薯/甜菜）；
+     * 仙人掌/甘蔗等特殊目标不参与自动种植（需玩家按原版规则自行布置）。</p>
      */
     private void ensureFarm(WorkContext ctx) {
-        List<Material> crops = List.copyOf(ctx.cfg().targets());
+        List<Material> crops = ctx.cfg().targets().stream()
+                .filter(AUTO_PLANTABLE::contains)
+                .toList();
         if (crops.isEmpty()) {
             return;
         }

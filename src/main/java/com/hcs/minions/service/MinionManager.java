@@ -370,6 +370,14 @@ public final class MinionManager {
                     ownerOnline.sendMessage(rare);
                 }
             }
+            // 主人在线：Title 高光 + 挑战完成音（Hypixel 稀有时刻仪式感）
+            Player ownerForFx = Bukkit.getPlayer(minion.owner());
+            if (ownerForFx != null) {
+                com.hcs.minions.util.Fx.title(ownerForFx,
+                        "<light_purple>✦ 稀有掉落!</light_purple>",
+                        "<gray>" + MaterialNames.of(cfg.rareDrop()) + "</gray>");
+                com.hcs.minions.util.Fx.sound(ownerForFx, org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f);
+            }
             if (config.get().debug()) {
                 Logs.info("调试: 仆从 {} 触发稀有掉落 {}", minion.type().key(), cfg.rareDrop());
             }

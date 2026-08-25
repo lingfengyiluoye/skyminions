@@ -80,8 +80,10 @@ public abstract class ItemRef {
             if (stack == null || stack.getType() != material) {
                 return false;
             }
-            // CraftEngine 自定义物品可能与原版材料同材质（如 PAPER），需排除
-            return CraftEngineHook.customItemId(stack) == null;
+            // CraftEngine 自定义物品可能与原版材料同材质（如 PAPER），需排除；
+            // minecraft: 命名空间一律视为原版（双保险，防 CE 端 id 形态变化）
+            String ceId = CraftEngineHook.customItemId(stack);
+            return ceId == null || ceId.startsWith("minecraft:");
         }
 
         @Override

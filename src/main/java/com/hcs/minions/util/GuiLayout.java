@@ -82,7 +82,10 @@ public final class GuiLayout {
     // ------------------------------------------------------------------
 
     private static int sizeOf(String key) {
-        return key.startsWith("fuel-gui.") ? 27 : 54;
+        if (key.startsWith("fuel-gui.") || key.startsWith("guide-list.")) {
+            return 27;
+        }
+        return key.startsWith("preview.") ? 45 : 54;
     }
 
     private static void readSlot(Map<String, Object> out, YamlConfiguration yaml, String key) {
@@ -193,21 +196,23 @@ public final class GuiLayout {
         };
 
         static {
-            // ---- 仆从仓库 GUI（54 格） ----
+            // ---- 仆从仓库 GUI（54 格，对齐 Hypixel：燃料左上/头颅居中/
+            //      模块槽在头颅左侧两格/皮肤右上；锁定存储格用黑玻璃） ----
             SLOTS_DEFAULTS.put("storage.slots", RANGE_9_44);
-            SLOTS_DEFAULTS.put("storage.decor.slots", new int[]{1, 2, 6, 8, 45, 46});
+            SLOTS_DEFAULTS.put("storage.decor.slots", new int[]{1, 8, 45, 48, 52, 53});
             SLOT_DEFAULTS.put("storage.fuel.slot", 0);
-            SLOT_DEFAULTS.put("storage.info.slot", 3);
+            SLOT_DEFAULTS.put("storage.info.slot", 6);
             SLOT_DEFAULTS.put("storage.head.slot", 4);
             SLOT_DEFAULTS.put("storage.upgrade.slot", 5);
             SLOT_DEFAULTS.put("storage.skin.slot", 7);
-            SLOT_DEFAULTS.put("storage.module1.slot", 47);
-            SLOT_DEFAULTS.put("storage.module2.slot", 48);
+            SLOT_DEFAULTS.put("storage.module1.slot", 2);
+            SLOT_DEFAULTS.put("storage.module2.slot", 3);
             SLOT_DEFAULTS.put("storage.collect.slot", 49);
-            SLOT_DEFAULTS.put("storage.autosell.slot", 50);
-            SLOT_DEFAULTS.put("storage.layout.slot", 51);
-            SLOT_DEFAULTS.put("storage.pickup.slot", 52);
-            SLOT_DEFAULTS.put("storage.close.slot", 53);
+            SLOT_DEFAULTS.put("storage.autosell.slot", 47);
+            SLOT_DEFAULTS.put("storage.layout.slot", 46);
+            SLOT_DEFAULTS.put("storage.pickup.slot", 50);
+            SLOT_DEFAULTS.put("storage.close.slot", 51);
+            MATERIAL_DEFAULTS.put("storage.locked.material", Material.BLACK_STAINED_GLASS_PANE);
 
             MATERIAL_DEFAULTS.put("storage.info.material", Material.BOOK);
             MATERIAL_DEFAULTS.put("storage.upgrade.material-ok", Material.GOLD_INGOT);
@@ -222,7 +227,7 @@ public final class GuiLayout {
             MATERIAL_DEFAULTS.put("storage.pickup.material", Material.ARMOR_STAND);
             MATERIAL_DEFAULTS.put("storage.close.material", Material.BARRIER);
             MATERIAL_DEFAULTS.put("storage.decor.material", Material.BLACK_STAINED_GLASS_PANE);
-            MATERIAL_DEFAULTS.put("storage.locked.material", Material.GRAY_STAINED_GLASS_PANE);
+            MATERIAL_DEFAULTS.put("storage.locked.material", Material.BLACK_STAINED_GLASS_PANE);
 
             // ---- 图鉴 GUI（54 格） ----
             SLOT_DEFAULTS.put("collection.all.slot", 0);
@@ -261,6 +266,34 @@ public final class GuiLayout {
             SLOT_DEFAULTS.put("craft.back.slot", 49);
             SLOT_DEFAULTS.put("craft.guide.slot", 45);
             MATERIAL_DEFAULTS.put("craft.guide.material", Material.BOOK);
+
+            // ---- 合成预览 GUI（45 格，纯展示：3×3 摆法 → 成品） ----
+            SLOTS_DEFAULTS.put("preview.grid.slots", new int[]{20, 21, 22, 29, 30, 31, 38, 39, 40});
+            SLOT_DEFAULTS.put("preview.arrow.slot", 32);
+            SLOT_DEFAULTS.put("preview.result.slot", 34);
+            SLOT_DEFAULTS.put("preview.info.slot", 4);
+            SLOT_DEFAULTS.put("preview.prev.slot", 9);
+            SLOT_DEFAULTS.put("preview.next.slot", 17);
+            SLOT_DEFAULTS.put("preview.close.slot", 44);
+            SLOTS_DEFAULTS.put("preview.decor.slots", new int[]{
+                    0, 1, 2, 3, 5, 6, 7, 8,
+                    10, 11, 12, 13, 14, 15, 16,
+                    18, 19, 23, 24, 25, 26, 27, 28,
+                    33, 35, 36, 37, 41, 42, 43
+            });
+            MATERIAL_DEFAULTS.put("preview.decor.material", Material.BLACK_STAINED_GLASS_PANE);
+            MATERIAL_DEFAULTS.put("preview.info.material", Material.BOOK);
+            MATERIAL_DEFAULTS.put("preview.arrow.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("preview.prev.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("preview.next.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("preview.close.material", Material.BARRIER);
+            MATERIAL_DEFAULTS.put("preview.nocraft.material", Material.BARRIER);
+
+            // ---- 材料指南清单 GUI（27 格，两级导航第一级） ----
+            SLOTS_DEFAULTS.put("guide-list.material.slots", new int[]{10, 11, 12, 13, 14, 15, 16});
+            SLOT_DEFAULTS.put("guide-list.close.slot", 22);
+            MATERIAL_DEFAULTS.put("guide-list.close.material", Material.BARRIER);
+            MATERIAL_DEFAULTS.put("guide-list.decor.material", Material.BLACK_STAINED_GLASS_PANE);
             SLOTS_DEFAULTS.put("craft.decor.slots", new int[]{
                     0, 1, 2, 3, 5, 6, 7, 8,
                     9, 10, 14, 15, 16, 17,

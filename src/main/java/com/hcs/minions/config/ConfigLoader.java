@@ -90,7 +90,7 @@ public final class ConfigLoader {
                 yaml.getBoolean("upgrade-require-previous-body", true),
                 yaml.getBoolean("collection-unlock-enabled", true),
                 yaml.getDouble("player-scan-radius", 48.0),
-                yaml.getInt("min-placement-distance", 5),
+                yaml.getInt("min-placement-distance", 1),
                 yaml.getBoolean("rare-drop-broadcast", true)
         );
     }

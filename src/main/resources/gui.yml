@@ -314,13 +314,61 @@ craft-gui:
     title: "<gray>合成</gray>"
   back:
     title: "<yellow>◀ 返回仆从界面</yellow>"
-  # 材料指南按钮：点击在聊天栏展示本级材料的合成/来源
+  # 材料指南按钮：点击打开图形化合成预览界面
   guide:
     title: "<gold>材料指南</gold>"
     lore:
       - "<gray>查看本级材料的获取方式</gray>"
       - "<dark_gray>合成配方 / 原版名称 / 其他来源</dark_gray>"
-      - "<yellow>点击后在聊天栏展示 ▶</yellow>"
+      - "<yellow>点击后打开图形化合成预览 ▶</yellow>"
+
+# ============================================================
+#  材料合成预览 GUI（45 格，纯展示防刷）
+# ------------------------------------------------------------
+#  · 中央 3×3 按原版摆法显示原料图标 → 箭头 → 成品
+#  · ◀ ▶ 在本级多种材料间切换；信息卡显示原版名称与获取途径
+#  · 整个视图不可取放（防刷）
+# ============================================================
+preview:
+  title: "<gold>{name} · 合成预览</gold>"
+  info:
+    title: "<gold>材料信息</gold>"
+  info-vanilla: "<dark_gray>原版名称: <white>{vanilla}</white></dark_gray>"
+  info-howto: "<dark_gray>获取: <green>{howto}</green></dark_gray>"
+  arrow:
+    title: "<yellow>合成 →</yellow>"
+  prev:
+    title: "<green>◀ 上一种材料</green>"
+  next:
+    title: "<green>下一种材料 ▶</green>"
+  close:
+    title: "<red>关闭</red>"
+  nocraft:
+    title: "<red>不可合成</red>"
+
+  # ============================================================
+  #  材料指南清单 GUI（27 格，两级导航第一级）
+  # ------------------------------------------------------------
+  #  · 中行展示本级全部升级材料（需求量 + 已有数量）
+  #  · 可合成材料：点击进入图形化合成预览
+  #  · 不可合成材料：点击无反应（点不开）
+  # ============================================================
+  guide-list:
+    title: "<gold>材料指南 · {name}</gold> <dark_gray>{tier}→{next}</dark_gray>"
+    item:
+      name-craft: "<yellow>{material} ×{need}</yellow>"
+      name-nocraft: "<gray>{material} ×{need}</gray>"
+      lore-craft:
+        - "<dark_gray>原版：{vanilla}</dark_gray>"
+        - "<dark_gray>已有: <white>{owned}</white></dark_gray>"
+        - "<green>▶ 点击查看合成方式</green>"
+      lore-nocraft:
+        - "<dark_gray>原版：{vanilla}</dark_gray>"
+        - "<dark_gray>已有: <white>{owned}</white></dark_gray>"
+        - "<red>不可合成</red>"
+        - "<dark_gray>{source}</dark_gray>"
+    close:
+      title: "<red>关闭</red>"
 
 # ============================================================
 #  GUI 布局配置（槽位与图标材质，与文案同样支持热重载）
@@ -336,14 +384,14 @@ layout:
   storage:
     slots: [9-44]                      # 存储区 36 格（按 Tier 逐级解锁）
     decor:
-      slots: [1, 2, 6, 8, 45, 46]      # 装饰玻璃槽
+      slots: [1, 8, 45, 48, 52, 53]      # 装饰玻璃槽
       material: BLACK_STAINED_GLASS_PANE
     locked:
-      material: GRAY_STAINED_GLASS_PANE  # 未解锁存储格/未解锁模块槽
+      material: BLACK_STAINED_GLASS_PANE  # 黑玻璃锁定格（对齐 Hypixel）
     fuel:
       slot: 0                          # 燃料状态卡（图标随状态变化，不可改）
     info:
-      slot: 3
+      slot: 6
       material: BOOK
     head:
       slot: 4                          # 头颅（图标为仆从皮肤头颅，不可改）
@@ -356,26 +404,26 @@ layout:
       slot: 7
       material: LEATHER_HELMET
     module1:
-      slot: 47                         # 模块槽 1（Tier 4 解锁）
+      slot: 2                          # 模块槽 1（头颅左侧，对齐 Hypixel；Tier 4 解锁）
     module2:
-      slot: 48                         # 模块槽 2（Tier 8 解锁）
+      slot: 3                          # 模块槽 2（Tier 8 解锁）
     module-empty:
       material: HOPPER                 # 空模块槽图标
     collect:
       slot: 49                         # 收集全部（居中）
       material: GOLD_BLOCK
     autosell:
-      slot: 50
+      slot: 47
       material-on: EMERALD
       material-off: GOLD_INGOT
     layout:
-      slot: 51                         # 理想布局
+      slot: 46                         # 理想布局
       material: MAP
     pickup:
-      slot: 52
+      slot: 50
       material: ARMOR_STAND
     close:
-      slot: 53
+      slot: 51
       material: BARRIER
 
   # ---- 图鉴 GUI（/minions，54 格） ----
@@ -436,10 +484,48 @@ layout:
       slot: 49
       material: ARROW
     guide:
-      slot: 45                          # 材料指南按钮：点击在聊天栏展示本级材料获取方式
+      slot: 45                          # 材料指南按钮：点击打开图形化合成预览
       material: BOOK
     decor:
-      slots: [0-3, 5-10, 14-19, 25-28, 32-48, 50-53]
+      slots: [0-3, 5-10, 14-19, 25-28, 32-44, 50-53]
       material: BLACK_STAINED_GLASS_PANE
     lack:
       material: GRAY_STAINED_GLASS_PANE  # 材料未集齐时的结果槽占位
+
+  # ---- 材料合成预览 GUI（45 格，纯展示防刷） ----
+  preview:
+    grid:
+      slots: [20, 21, 22, 29, 30, 31, 38, 39, 40]   # 3×3 摆法（按原版配方位置）
+    arrow:
+      slot: 32                          # 合成箭头
+      material: ARROW
+    result:
+      slot: 34                          # 成品展示槽（不可取）
+    info:
+      slot: 4                           # 材料信息卡（原版名称/获取途径/页码）
+      material: BOOK
+    prev:
+      slot: 9                           # ◀ 上一种材料
+      material: ARROW
+    next:
+      slot: 17                          # ▶ 下一种材料
+      material: ARROW
+    close:
+      slot: 44
+      material: BARRIER
+    nocraft:
+      material: BARRIER                 # 不可合成材料的网格占位
+    decor:
+      slots: [0-3, 5-8, 10-16, 18-19, 23-28, 33, 35-37, 41-43]
+      material: BLACK_STAINED_GLASS_PANE
+
+  # ---- 材料指南清单 GUI（27 格，两级导航第一级） ----
+  guide-list:
+    material:
+      slots: [10, 11, 12, 13, 14, 15, 16]   # 材料条目（≤7 种；点击可合成项进入预览）
+    close:
+      slot: 22
+      material: BARRIER
+    decor:
+      slots: [0-9, 17-21, 23-26]
+      material: BLACK_STAINED_GLASS_PANE

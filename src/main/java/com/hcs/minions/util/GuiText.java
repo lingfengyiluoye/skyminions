@@ -387,8 +387,36 @@ public final class GuiText {
             MAP.put("craft-gui.guide.lore", List.of(
                     "<gray>查看本级材料的获取方式</gray>",
                     "<dark_gray>合成配方 / 原版名称 / 其他来源</dark_gray>",
-                    "<yellow>点击后在聊天栏展示 ▶</yellow>"
+                    "<yellow>点击后打开图形化合成预览 ▶</yellow>"
             ));
+
+            // ---- 合成预览 GUI ----
+            MAP.put("preview.title", "<gold>{name} · 合成预览</gold>");
+            MAP.put("preview.info.title", "<gold>材料信息</gold>");
+            MAP.put("preview.info.vanilla", "<dark_gray>原版名称: <white>{vanilla}</white></dark_gray>");
+            MAP.put("preview.info.howto", "<dark_gray>获取: <green>{howto}</green></dark_gray>");
+            MAP.put("preview.arrow.title", "<yellow>合成 →</yellow>");
+            MAP.put("preview.prev.title", "<green>◀ 上一种材料</green>");
+            MAP.put("preview.next.title", "<green>下一种材料 ▶</green>");
+            MAP.put("preview.close.title", "<red>关闭</red>");
+            MAP.put("preview.nocraft.title", "<red>不可合成</red>");
+
+            // ---- 材料指南清单 GUI（两级导航第一级） ----
+            MAP.put("guide-list.title", "<gold>材料指南 · {name}</gold> <dark_gray>{tier}→{next}</dark_gray>");
+            MAP.put("guide-list.item.name-craft", "<yellow>{material} ×{need}</yellow>");
+            MAP.put("guide-list.item.name-nocraft", "<gray>{material} ×{need}</gray>");
+            MAP.put("guide-list.item.lore-craft", List.of(
+                    "<dark_gray>原版：{vanilla}</dark_gray>",
+                    "<dark_gray>已有: <white>{owned}</white></dark_gray>",
+                    "<green>▶ 点击查看合成方式</green>"
+            ));
+            MAP.put("guide-list.item.lore-nocraft", List.of(
+                    "<dark_gray>原版：{vanilla}</dark_gray>",
+                    "<dark_gray>已有: <white>{owned}</white></dark_gray>",
+                    "<red>不可合成</red>",
+                    "<dark_gray>{source}</dark_gray>"
+            ));
+            MAP.put("guide-list.close.title", "<red>关闭</red>");
         }
 
         private Defaults() {

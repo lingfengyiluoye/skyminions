@@ -132,6 +132,10 @@ public final class OfflineSettlement implements Listener {
                 collection.record(minion.owner(), item.getType(), item.getAmount());
             }
             sendSummary(minion, cfg, totalUnits, yields);
+            Player ownerOnlineNow = Bukkit.getPlayer(minion.owner());
+            if (ownerOnlineNow != null) {
+                com.hcs.minions.util.Fx.sound(ownerOnlineNow, org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f);
+            }
             Logs.info("离线结算: 仆从 {} 闲置 {}s 补发 {} 件", minion.id(), cappedSec, totalUnits);
         } catch (Exception e) {
             Logs.error("离线结算失败（跳过该仆从，不影响其他）: id=" + minion.id(), e);

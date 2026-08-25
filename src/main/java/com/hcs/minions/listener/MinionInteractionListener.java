@@ -91,7 +91,7 @@ public final class MinionInteractionListener implements Listener {
             return;
         }
         if (manager.tooCloseToOtherMinion(BlockLocation.of(block))) {
-            player.sendMessage(Messages.MINION_TOO_CLOSE);
+            com.hcs.minions.util.Fx.deny(player, Messages.minionTooClose(config.get().minPlacementDistance()));
             return;
         }
 
@@ -187,11 +187,11 @@ public final class MinionInteractionListener implements Listener {
                 minion.addPermanentFuel(fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
                 returnEmptyContainer(player, hand.getType());
-                player.sendMessage(Messages.permanentFuelEquipped((int) ((fuelValue.boost() - 1) * 100)));
+                com.hcs.minions.util.Fx.ok(player, Messages.permanentFuelEquipped((int) ((fuelValue.boost() - 1) * 100)));
             } else if (fuelValue.hasMultiplier()) {
                 // 每次只消耗 1 个；弱于当前倍率则不消耗
                 if (!minion.addMultiplier(fuelValue.multiplier(), fuelValue.durationTicks())) {
-                    player.sendMessage(Messages.multFuelWeak(minion.prodMultiplier()));
+                    com.hcs.minions.util.Fx.deny(player, Messages.multFuelWeak(minion.prodMultiplier()));
                     return;
                 }
                 hand.setAmount(hand.getAmount() - 1);
@@ -201,7 +201,8 @@ public final class MinionInteractionListener implements Listener {
                 minion.addFuel(fuelValue.durationTicks(), fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
                 returnEmptyContainer(player, hand.getType());
-                player.sendMessage(Messages.fuelAdded((int) ((fuelValue.boost() - 1) * 100)));
+                com.hcs.minions.util.Fx.ok(player, Messages.fuelAdded((int) ((fuelValue.boost() - 1) * 100)));
+                com.hcs.minions.util.Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
             }
             manager.save(minion);
             return;
@@ -223,6 +224,7 @@ public final class MinionInteractionListener implements Listener {
         minion.cleanupLayoutBlocks(); // 拾取时还原理想布局摆放的水/岩浆
         manager.remove(minion, player);
         giveOrDrop(player, spawner);
+        com.hcs.minions.util.Fx.pickup(player);
     }
 
     private void giveOrDrop(Player player, ItemStack item) {

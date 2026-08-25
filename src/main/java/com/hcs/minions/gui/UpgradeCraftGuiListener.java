@@ -19,6 +19,8 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.List;
+
 /**
  * 升级合成 GUI 交互：合成格自由取放（材料来自玩家背包），材料齐后点击结果槽
  * 消耗格内物品并原地升级仆从；关闭/返回时格内残留物品归还玩家。
@@ -83,6 +85,7 @@ public final class UpgradeCraftGuiListener implements Listener {
             return;
         }
         if (slot == UpgradeCraftGui.guideSlot()) {
+            com.hcs.minions.util.Fx.sound(player, org.bukkit.Sound.UI_BUTTON_CLICK, 1.1f);
             sendGuide(player, minion);
             return;
         }
@@ -92,18 +95,24 @@ public final class UpgradeCraftGuiListener implements Listener {
         // 箭头与装饰槽：仅拦截
     }
 
-    /** 材料指南：聊天栏输出本级全部材料的合成/来源（含原版名对照与不可合成特例）。 */
+    /** 材料指南：打开两级导航的清单页（材料+数量），点击可合成项进入图形化预览。 */
     private void sendGuide(Player player, Minion minion) {
-        com.hcs.minions.config.MinionTypeConfig cfg = config.get().type(minion.type());
-        var level = minion.level();
-        player.sendMessage(Messages.materialsHeader(cfg.displayName(),
-                com.hcs.minions.util.Roman.of(level), com.hcs.minions.util.Roman.of(level + 1)));
-        for (var e : cfg.recipeFor(level).entrySet()) {
-            Material mat = e.getKey().guideMaterial();
-            player.sendMessage(Messages.materialsEntry(e.getKey().displayName(), e.getValue()));
-            for (var line : com.hcs.minions.util.MaterialGuide.chatLines(mat)) {
-                player.sendMessage(line);
+        try {
+            com.hcs.minions.config.MinionTypeConfig cfg = config.get().type(minion.type());
+            var recipe = cfg.recipeFor(minion.level());
+            // 已有数量（按材质聚合，供清单页展示）
+            java.util.Map<Material, Long> owned = new java.util.LinkedHashMap<>();
+            for (var ref : recipe.keySet()) {
+                owned.put(ref.guideMaterial(), minion.countInStorage(ref));
             }
+            GuideListGui.open(player, cfg.displayName(),
+                    com.hcs.minions.util.Roman.of(minion.level()),
+                    com.hcs.minions.util.Roman.of(minion.level() + 1),
+                    recipe, owned, player.getUniqueId(), minion.level());
+        } catch (Throwable t) {
+            // 兜底：指南打开失败只影响本按钮，绝不带崩服务器
+            com.hcs.minions.util.Logs.error("材料指南清单打开失败: minion=" + minion.id(), t);
+            player.sendMessage("§c材料指南打开失败，详情见控制台日志");
         }
     }
 
@@ -151,6 +160,8 @@ public final class UpgradeCraftGuiListener implements Listener {
         }
         UpgradeCraftGui.CraftCheck check = UpgradeCraftGui.validate(inv, minion, items, cfg, config);
         if (!check.complete()) {
+            com.hcs.minions.util.Fx.deny(player,
+                    "<red>材料未集齐，还差 " + formatMissing(check) + "</red>");
             player.sendMessage(Messages.upgradeFailed(formatMissing(check)));
             return;
         }
@@ -160,6 +171,7 @@ public final class UpgradeCraftGuiListener implements Listener {
         minion.refresh(cfg, config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.upgradeSuccess(minion.level()));
+        com.hcs.minions.util.Fx.title(player, "<gold>✔ 升级成功</gold>", "<gray>当前 等级 " + minion.level() + "</gray>");
         // 点击事件中直接开新界面可能不被客户端接受：先关闭，下一 tick 重开仆从界面
         // （onClose 时合成格已清空，不会误归还）。使用 RegionScheduler 保持 Folia 兼容
         player.closeInventory();

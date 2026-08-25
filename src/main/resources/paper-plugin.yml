@@ -26,7 +26,7 @@ libraries:
 
 # 权限说明（LuckPerms 联动）：
 #   注意：paper-plugin.yml 不支持 permissions 声明段（Paper 限制），
-#   全部节点由 PermissionRegistry 在 onEnable 程序化注册，因此：
-#     · /lp tree 与 LuckPerms 编辑器中搜索 hcs.minions 即可看到全部节点
-#     · hcs.minions.admin 默认 op；hcs.minions.use 与全部 type.<类型> 默认 true
-#     · hcs.minions.limit.<n> 为动态数字节点（取最大 n），按需在 LuckPerms 授予
+#   全部节点由 core/PermissionRegistry 在 onEnable 程序化注册，因此：
+#     · /lp tree 与 LuckPerms 编辑器中搜索 minions 即可看到全部节点
+#     · minions.admin 默认 op；minions.use 与全部 type.<类型中文名> 默认 true
+#     · minions.limit.<n> 为动态数字节点（取最大 n），按需在 LuckPerms 授予

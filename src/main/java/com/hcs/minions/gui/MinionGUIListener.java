@@ -12,6 +12,7 @@ import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.MinionUpgradeType;
 import com.hcs.minions.upgrade.UpgradeService;
+import com.hcs.minions.util.Fx;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
@@ -84,7 +85,7 @@ public final class MinionGUIListener implements Listener {
             minion.setAutoSell(!minion.autoSell());
             minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
             manager.save(minion); // 立即登记落库，不依赖 onClose 兜底
-            player.sendMessage(Messages.autoSellToggled(minion.autoSell()));
+            Fx.ok(player, Messages.autoSellToggled(minion.autoSell()));
             return;
         }
         if (slot == Minion.pickupSlot()) {
@@ -155,7 +156,8 @@ public final class MinionGUIListener implements Listener {
                     player.sendMessage(Messages.permanentFuelEquipped((int) ((fv.boost() - 1) * 100)));
                 } else {
                     minion.addFuel(fv.durationTicks() * fuel.getAmount(), fv.boost());
-                    player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
+                    Fx.ok(player, Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
+            Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
                 }
             } else {
                 giveOrDrop(player, fuel);
@@ -207,21 +209,22 @@ public final class MinionGUIListener implements Listener {
             minion.addPermanentFuel(fv.boost());
             cursor.setAmount(cursor.getAmount() - 1);
             event.setCursor(cursor.getAmount() > 0 ? cursor : null);
-            player.sendMessage(Messages.permanentFuelEquipped((int) ((fv.boost() - 1) * 100)));
+            Fx.ok(player, Messages.permanentFuelEquipped((int) ((fv.boost() - 1) * 100)));
         } else if (fv.hasMultiplier()) {
             // 催化剂轴：整组安装时长，仅更强倍率才会被消耗
             int amount = cursor.getAmount();
             if (!minion.addMultiplier(fv.multiplier(), fv.durationTicks() * amount)) {
-                player.sendMessage(Messages.multFuelWeak(minion.prodMultiplier()));
+                Fx.deny(player, Messages.multFuelWeak(minion.prodMultiplier()));
                 return;
             }
             event.setCursor(null);
-            player.sendMessage(Messages.multFuelEquipped(fv.multiplier(), fv.durationTicks() * amount / 20L));
+            Fx.ok(player, Messages.multFuelEquipped(fv.multiplier(), fv.durationTicks() * amount / 20L));
         } else {
             int amount = cursor.getAmount();
             event.setCursor(null);
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
-            player.sendMessage(Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
+            Fx.ok(player, Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
+            Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
         }
         if (bucketFuel) {
             giveOrDrop(player, new ItemStack(Material.BUCKET, 1)); // 桶装燃料返还空桶
@@ -240,7 +243,7 @@ public final class MinionGUIListener implements Listener {
         minion.setFuelBoost(1.0);
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
-        player.sendMessage(Messages.fuelUnequipped());
+        Fx.ok(player, Messages.fuelUnequipped());
     }
 
     /** 燃料指引：操作方式 + 当前燃料状态 + 全部可用燃料列表。 */
@@ -325,7 +328,7 @@ public final class MinionGUIListener implements Listener {
         entities.refreshAppearance(minion);
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
-        player.sendMessage(Messages.skinChanged(minion.skin().displayName()));
+        Fx.ok(player, Messages.skinChanged(minion.skin().displayName()));
     }
 
     /** 理想布局：圆石/农夫为可执行开关（自动摆方块，见各自策略）；其余类型展示布局指引。 */
@@ -366,12 +369,13 @@ public final class MinionGUIListener implements Listener {
     private void collectAll(Player player, Minion minion) {
         List<ItemStack> collected = minion.collectAll();
         if (collected.isEmpty()) {
-            player.sendMessage(Messages.STORAGE_EMPTY);
+            Fx.deny(player, Messages.STORAGE_EMPTY);
             return;
         }
         giveOrDrop(player, collected.toArray(new ItemStack[0]));
         manager.save(minion); // 清仓状态立即登记落库
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+        com.hcs.minions.util.Fx.pickup(player);
         player.sendMessage(Messages.COLLECTED_ALL);
     }
 

@@ -75,7 +75,18 @@ public final class CraftEngineHook {
         }
         try {
             Object key = GET_CUSTOM_ITEM_ID.invoke(null, stack);
-            return key == null ? null : key.toString();
+            // 兼容两种 API 形态：
+            //   旧版返回 @Nullable Key（null = 原版）
+            //   新版返回 Optional<Key>（empty = 原版）——直接 toString 会得到
+            //   "Optional.empty"，导致所有原版材料被误判为自定义物品而拒绝匹配
+            if (key == null) {
+                return null;
+            }
+            if (key instanceof java.util.Optional<?> opt) {
+                return opt.map(Object::toString).orElse(null);
+            }
+            String id = key.toString();
+            return id.isBlank() ? null : id;
         } catch (Throwable t) {
             return null;
         }

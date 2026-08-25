@@ -323,7 +323,20 @@ public final class MaterialNames {
             Map.entry("DRAGON_HEAD", "龙首"),
             Map.entry("FERMENTED_SPIDER_EYE", "发酵蛛眼"),
             Map.entry("CARROT_ON_A_STICK", "胡萝卜钓竿"),
-            Map.entry("LEATHER_HORSE_ARMOR", "皮革马铠")
+            Map.entry("LEATHER_HORSE_ARMOR", "皮革马铠"),
+            Map.entry("BLUE_ICE", "蓝冰"),
+            Map.entry("SNOW", "雪"),
+            Map.entry("SNOW_BLOCK", "雪块"),
+            Map.entry("DEAD_BUSH", "枯灌木"),
+            Map.entry("TORCHFLOWER_SEEDS", "火把花种子"),
+            Map.entry("MYCELIUM", "菌丝体"),
+            Map.entry("GREEN_DYE", "绿色染料"),
+            Map.entry("CRIMSON_FUNGUS", "绯红菌"),
+            Map.entry("WARPED_FUNGUS", "诡异菌"),
+            Map.entry("MAGMA_BLOCK", "岩浆块"),
+            Map.entry("BEEHIVE", "蜂箱"),
+            Map.entry("BEE_NEST", "蜂巢"),
+            Map.entry("BONE_MEAL", "骨粉")
     );
 
     private MaterialNames() {
