@@ -10,4 +10,9 @@ public record EconomyConfig(
         long sellIntervalTicks,
         double priceMultiplier
 ) {
+    public EconomyConfig {
+        sellIntervalTicks = Math.max(4L, sellIntervalTicks);
+        priceMultiplier = Double.isFinite(priceMultiplier) && priceMultiplier > 0
+                ? priceMultiplier : 1.0;
+    }
 }

@@ -17,6 +17,10 @@ import java.util.List;
  */
 public final class ItemCodec {
 
+    private static final int MAX_ITEMS = 512;
+    /** 单项字节上限：正常物品几百字节，带满 NBT 的书/烟花约几十 KB，64KB 足够且防内存放大。 */
+    private static final int MAX_ITEM_BYTES = 65_536;
+
     private ItemCodec() {
     }
 
@@ -61,16 +65,28 @@ public final class ItemCodec {
         }
         try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data))) {
             int n = dis.readInt();
+            if (n < 0 || n > MAX_ITEMS) {
+                throw new IOException("invalid item count: " + n);
+            }
             for (int i = 0; i < n; i++) {
                 int len = dis.readInt();
+                if (len < 0 || len > MAX_ITEM_BYTES) {
+                    throw new IOException("invalid item payload length: " + len);
+                }
                 byte[] bytes = new byte[len];
                 dis.readFully(bytes);
-                ItemStack item = ItemStack.deserializeBytes(bytes);
+                ItemStack item;
+                try {
+                    item = ItemStack.deserializeBytes(bytes);
+                } catch (RuntimeException ex) {
+                    Logs.warn("物品反序列化失败，已跳过第 {} 项", i, ex);
+                    continue;
+                }
                 if (item != null && item.getType() != org.bukkit.Material.AIR) {
                     out.add(item);
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Logs.error("物品列表反序列化失败，已降级返回空列表", e);
         }
         return out;

@@ -31,6 +31,8 @@ public final class CachedMinionRepository implements MinionRepository {
     private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
     /** 按 id 串行化数据库写操作（upsert vs delete 的顺序保证）。 */
     private final ConcurrentHashMap<UUID, Object> idLocks = new ConcurrentHashMap<>();
+    /** 关闭阶段禁止旧快照在最终同步刷库之后再次写入。 */
+    private volatile boolean closing;
 
     private final MinionStore store;
     private final AsyncExecutor async;
@@ -113,14 +115,27 @@ public final class CachedMinionRepository implements MinionRepository {
 
     /** 将 region 线程已生成的快照批量异步落库。 */
     public void flushSnapshots(List<MinionData> snapshots) {
-        if (snapshots.isEmpty()) {
+        if (snapshots.isEmpty() || closing) {
+            if (closing) {
+                for (MinionData snapshot : snapshots) {
+                    requeue(snapshot.id());
+                }
+            }
             return;
         }
         for (MinionData snapshot : snapshots) {
             async.run(() -> {
+                if (closing) {
+                    requeue(snapshot.id());
+                    return;
+                }
                 Object lock = lockFor(snapshot.id());
                 synchronized (lock) {
                     try {
+                        if (closing) {
+                            requeue(snapshot.id());
+                            return;
+                        }
                         // 快照生成后若仆从已被拾取/移除（delete 同步清 cache），丢弃该次 upsert；
                         // 且与 delete 共享同一把 id 锁：两者必然全序执行，杜绝「先删后被旧快照覆盖」复活
                         if (!cache.containsKey(snapshot.id())) {
@@ -149,6 +164,7 @@ public final class CachedMinionRepository implements MinionRepository {
      */
     @Override
     public void flushDirtySync() {
+        closing = true;
         for (UUID id : List.copyOf(dirty)) {
             Minion minion = cache.get(id);
             if (minion == null) {
@@ -156,9 +172,12 @@ public final class CachedMinionRepository implements MinionRepository {
                 continue;
             }
             try {
-                store.upsert(minion.toData());
-                minion.markClean();
-                dirty.remove(id);
+                Object lock = lockFor(id);
+                synchronized (lock) {
+                    store.upsert(minion.toData());
+                    minion.markClean();
+                    dirty.remove(id);
+                }
             } catch (Exception e) {
                 // 失败时保留脏标记（与 flushSnapshots 异步路径口径一致），
                 // 避免瞬时 IO 错误（如 Windows 文件锁）直接丢数据
@@ -176,5 +195,13 @@ public final class CachedMinionRepository implements MinionRepository {
 
     private Object lockFor(UUID id) {
         return idLocks.computeIfAbsent(id, k -> new Object());
+    }
+
+    private void requeue(UUID id) {
+        Minion minion = cache.get(id);
+        if (minion != null) {
+            minion.markDirty();
+            dirty.add(id);
+        }
     }
 }

@@ -64,7 +64,16 @@ public record MinionTypeConfig(
 ) {
 
     public MinionTypeConfig {
-        targets = Set.copyOf(targets);
+        key = key == null || key.isBlank() ? "unknown" : key;
+        displayName = displayName == null || displayName.isBlank() ? key : displayName;
+        maxLevel = Math.max(1, maxLevel);
+        baseEfficiency = Double.isFinite(baseEfficiency) && baseEfficiency > 0 ? baseEfficiency : 1.0;
+        efficiencyPerLevel = Double.isFinite(efficiencyPerLevel) ? Math.max(0, efficiencyPerLevel) : 0;
+        baseFuelTicks = Math.max(0, baseFuelTicks);
+        cooldownTicks = Math.max(1, cooldownTicks);
+        sellPricePerUnit = Double.isFinite(sellPricePerUnit) ? Math.max(0, sellPricePerUnit) : 0;
+        baseRadius = Math.max(0, baseRadius);
+        targets = targets == null ? Set.of() : Set.copyOf(targets);
         targetsByTier = normalizeTiers(targetsByTier);
         recipeOverrides = normalizeOverrides(recipeOverrides);
         preferredTargets = preferredTargets == null ? Set.of()
@@ -73,8 +82,9 @@ public record MinionTypeConfig(
         ranchAnimalKey = ranchAnimalKey == null || ranchAnimalKey.isBlank()
                 ? null : ranchAnimalKey.trim().toUpperCase(java.util.Locale.ROOT);
         // 配方保序且不可变（GUI 展示与扣除顺序稳定）
-        upgradeRecipe = Collections.unmodifiableMap(new LinkedHashMap<>(upgradeRecipe));
-        if (upgradeCostGrowth < 1.0) {
+        upgradeRecipe = upgradeRecipe == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(upgradeRecipe));
+        if (!Double.isFinite(upgradeCostGrowth) || upgradeCostGrowth < 1.0) {
             upgradeCostGrowth = 1.0;
         }
         if (harvestCap < 1) {
@@ -82,10 +92,12 @@ public record MinionTypeConfig(
         }
         if (cooldownPerLevel == null) {
             cooldownPerLevel = new int[0];
+        } else {
+            cooldownPerLevel = java.util.Arrays.stream(cooldownPerLevel)
+                    .map(v -> Math.max(1, v)).toArray();
         }
-        if (rareDropChance < 0) {
-            rareDropChance = 0;
-        }
+        rareDropChance = Double.isFinite(rareDropChance)
+                ? Math.max(0, Math.min(1, rareDropChance)) : 0;
         if (unlockAmount < 0) {
             unlockAmount = 0;
         }

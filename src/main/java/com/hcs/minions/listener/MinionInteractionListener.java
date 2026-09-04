@@ -122,9 +122,13 @@ public final class MinionInteractionListener implements Listener {
         if (produced > 0) {
             minion.addProduced(produced);
         }
-        minion.setStorageItems(items.parseStorage(hand));
+        // 必须先装模块再灌仓库：储物箱模块决定 unlockedSlots 容量，
+        // 顺序反了会把超出基础容量的存量物品当溢出丢弃（拾取往返丢数据）。
         minion.setUpgrade1(items.parseUpgrade1(hand));
         minion.setUpgrade2(items.parseUpgrade2(hand));
+        minion.setUpgrade3(items.parseUpgrade3(hand));
+        minion.setUpgrade4(items.parseUpgrade4(hand));
+        minion.setStorageItems(items.parseStorage(hand));
         minion.setSkin(items.parseSkin(hand));
         // 放置时固定面向放置者（Hypixel 风格），避免每次朝向随机
         minion.setFacing(yawTowards(block.getLocation().add(0.5, 0.0, 0.5), player.getLocation()));
@@ -221,7 +225,6 @@ public final class MinionInteractionListener implements Listener {
             player.sendMessage(Component.text("拾取失败：物品生成异常，详情见控制台日志", NamedTextColor.RED));
             return;
         }
-        minion.cleanupLayoutBlocks(); // 拾取时还原理想布局摆放的水/岩浆
         manager.remove(minion, player);
         giveOrDrop(player, spawner);
         com.hcs.minions.util.Fx.pickup(player);

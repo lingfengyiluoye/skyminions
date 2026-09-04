@@ -27,7 +27,7 @@ class SqliteMinionStoreTest {
                 id, UUID.randomUUID(), "cobble", 5,
                 "world", 600, 100, 2,
                 72000L, 1.25, 2.0, 18000L, System.currentTimeMillis(), "island-abc",
-                "auto_smelter", null, "golden",
+                "auto_smelter", null, null, null, "golden",
                 true, 12345L, 1.30,
                 new byte[]{1, 2, 3, 4}
         );
@@ -86,7 +86,7 @@ class SqliteMinionStoreTest {
             MinionData updated = new MinionData(
                     in.id(), in.owner(), in.type(), 6, in.world(), in.x(), in.y(), in.z(),
                     36000L, 1.10, 1.0, 0L, in.lastActiveEpochMs(), in.islandId(),
-                    null, "compactor", in.skin(),
+                    null, "compactor", null, null, in.skin(),
                     false, 99999L, 1.0, new byte[]{9});
             store.upsert(updated);
             MinionData reread = store.select(id).orElseThrow();

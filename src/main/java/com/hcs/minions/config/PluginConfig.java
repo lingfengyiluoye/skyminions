@@ -44,11 +44,18 @@ public record PluginConfig(
 ) {
 
     public PluginConfig {
-        types = Map.copyOf(types); // 快照不可变
+        types = types == null ? Map.of() : Map.copyOf(types); // 快照不可变
+        tickPeriod = Math.max(1L, tickPeriod);
         if (maxChecksPerCycle >= 50) {
             throw new IllegalArgumentException("max-checks-per-cycle 必须 < 50");
         }
-        if (playerScanRadius < 0) {
+        if (maxChecksPerCycle < 1) {
+            maxChecksPerCycle = 1;
+        }
+        if (maxMinionsPerPlayer < 0) {
+            maxMinionsPerPlayer = 0;
+        }
+        if (!Double.isFinite(playerScanRadius) || playerScanRadius < 0) {
             playerScanRadius = 0; // 0 = 永远不休眠
         }
         if (minPlacementDistance < 0) {

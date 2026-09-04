@@ -13,6 +13,7 @@ import com.hcs.minions.util.AsyncExecutor;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
+import com.hcs.minions.util.PlayerTasks;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -34,6 +35,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -62,12 +65,15 @@ public final class MinionManager {
     private final ConcurrentHashMap<UUID, Long> lastDebugLog = new ConcurrentHashMap<>();
     /** 主人 -> 仆从数 索引，O(1) 查询（替代全量 stream 计数）。 */
     private final ConcurrentHashMap<UUID, Integer> ownerCount = new ConcurrentHashMap<>();
+    private final Object placementLock = new Object();
 
     private ScheduledTask tickTask;
     private ScheduledTask sellTask;
+    private ScheduledFuture<?> snapshotTask;
 
     // ---- 运行时统计（/minion stats）：原子计数，调度线程单写、任意线程读 ----
     private volatile long startMillis;
+    private volatile boolean ready;
     private final java.util.concurrent.atomic.AtomicLong tickCycles = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong rareDropRolls = new java.util.concurrent.atomic.AtomicLong();
 
@@ -94,6 +100,7 @@ public final class MinionManager {
     // ------------------------------------------------------------------
 
     public void start() {
+        ready = false;
         repository.findAllData().thenAccept(rows -> {
             if (rows.isEmpty()) {
                 Logs.info("未加载到仆从数据");
@@ -128,12 +135,13 @@ public final class MinionManager {
         }
         Logs.info("已加载 {} 个仆从", minions.size());
         this.startMillis = System.currentTimeMillis();
+        this.ready = true;
 
         this.tickTask = Bukkit.getGlobalRegionScheduler()
                 .runAtFixedRate(plugin, ignored -> tick(), 20L, config.get().tickPeriod());
         Logs.info("全局调度器已启动（周期 {} tick，已加载 {} 个仆从）", config.get().tickPeriod(), minions.size());
 
-        async.scheduleAtFixedRate(this::snapshotAndFlush, 5, 5, TimeUnit.SECONDS);
+        snapshotTask = async.scheduleAtFixedRate(this::snapshotAndFlush, 5, 5, TimeUnit.SECONDS);
 
         // 自动售卖轮询改为 GlobalRegionScheduler（region 绑定操作不能在异步线程访问 Inventory）
         long sellIntervalTicks = Math.max(4L, config.get().economy().sellIntervalTicks());
@@ -153,9 +161,11 @@ public final class MinionManager {
         if (dirtyIds.isEmpty()) {
             return;
         }
-        // 不同 region 线程可能并发 add，需线程安全容器
+        // 不同 region 线程可能并发完成；超时后迟到的快照必须单独补刷，不能写入已提交批次。
         List<com.hcs.minions.model.MinionData> snapshots = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<CompletableFuture<Void>> tasks = new ArrayList<>();
+        Object batchLock = new Object();
+        AtomicBoolean batchSettled = new AtomicBoolean();
         for (UUID id : dirtyIds) {
             Minion minion = repository.getCached(id);
             if (minion == null) {
@@ -171,11 +181,21 @@ public final class MinionManager {
             tasks.add(task);
             // 在该仆从的 region 线程认领脏标记并生成快照（Inventory 访问安全）
             Bukkit.getRegionScheduler().run(plugin, center, ignored -> {
+                com.hcs.minions.model.MinionData snapshot = null;
                 try {
                     if (repository.claimDirty(id)) {
-                        snapshots.add(minion.toData());
+                        snapshot = minion.toData();
                     }
                 } finally {
+                    if (snapshot != null) {
+                        synchronized (batchLock) {
+                            if (batchSettled.get()) {
+                                repository.flushSnapshots(List.of(snapshot));
+                            } else {
+                                snapshots.add(snapshot);
+                            }
+                        }
+                    }
                     task.complete(null);
                 }
             });
@@ -184,22 +204,32 @@ public final class MinionManager {
             CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
                     .orTimeout(10, TimeUnit.SECONDS)
                     .whenComplete((v, t) -> {
-                        // 单个 region 任务挂起（区块异常等）不应阻塞整批落库：
-                        // 超时后先冲刷已收集的快照，未被认领的脏标记下轮重试
-                        if (t != null) {
-                            Logs.warn("快照收集超时，已冲刷 {} 份已就绪快照，其余下轮重试", snapshots.size());
+                        List<com.hcs.minions.model.MinionData> ready;
+                        synchronized (batchLock) {
+                            batchSettled.set(true);
+                            ready = List.copyOf(snapshots);
+                            snapshots.clear();
                         }
-                        repository.flushSnapshots(snapshots);
+                        // 单个 region 任务挂起（区块异常等）不应阻塞整批落库：
+                        // 超时后先冲刷已收集的快照；迟到快照由 region 回调单独补刷。
+                        if (t != null) {
+                            Logs.warn("快照收集超时，已冲刷 {} 份已就绪快照，其余迟到任务单独补刷", ready.size());
+                        }
+                        repository.flushSnapshots(ready);
                     });
         }
     }
 
     public void stop() {
+        ready = false;
         if (tickTask != null) {
             tickTask.cancel();
         }
         if (sellTask != null) {
             sellTask.cancel();
+        }
+        if (snapshotTask != null) {
+            snapshotTask.cancel(false);
         }
         // 先关闭所有打开的仆从 GUI，避免冲刷期间玩家仍在交互（P0-3）
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -259,6 +289,11 @@ public final class MinionManager {
         if (center == null) {
             return;
         }
+        MinionTypeConfig typeConfig = config.get().type(minion.type());
+        if (typeConfig == null) {
+            entities.refreshStatus(minion, MinionEntityService.PlateStatus.HALTED);
+            return;
+        }
 
         // 盔甲架按需生成 / 区块卸载后自愈（提前到玩家检查之前：
         // 闲置仆从也需要名牌展示 ⏾ 状态）
@@ -275,8 +310,6 @@ public final class MinionManager {
             entities.refreshStatus(minion, MinionEntityService.PlateStatus.DORMANT);
             return;
         }
-        entities.refreshStatus(minion, MinionEntityService.PlateStatus.WORKING);
-
         // 在线处理期间持续推进 lastActive（30s 节流）：
         // 这是离线结算的"已支付指针"，必须与实时产出保持同步，否则会重复支付
         long now = System.currentTimeMillis();
@@ -284,7 +317,29 @@ public final class MinionManager {
             minion.setLastActiveEpochMs(now);
         }
 
-        // 产量倍率时长仅在线处理时衰减
+        // GUI 正被观看时每秒刷新状态卡（燃料剩余秒数/下次工作倒计时/仓存等实时跳动）
+        if (minion.shouldRefreshGuiView(nowTick)) {
+            minion.refresh(typeConfig, config.get().upgradeRequirePreviousBody());
+            minion.markGuiRefreshed(nowTick);
+        }
+
+        // 仓储级压缩结算（自动压缩/超级压缩 3000）：必须在停工判定之前，
+        // 否则「散装塞满仓 → 停工 → 永不压缩」死锁；压缩腾出格位后自然复产。
+        // 已在 region 线程上，consume/addToStorage 线程安全
+        upgrades.compactStorage(minion);
+
+        // 满仓停工（对齐 Hypixel）：仓库已满且无自动售卖手段则停产，头顶展示告警；
+        // 玩家取货/开售卖后下轮自动恢复。停工期间不衰减燃料/倍率——与"无人休眠"口径一致，
+        // 避免产出为零时仍白白烧掉玩家的燃料和催化剂时长（离线结算路径本就不烧空转燃料）。
+        boolean halted = minion.isStorageFull() && !hasSellOutlet(minion);
+        entities.refreshStatus(minion, halted
+                ? MinionEntityService.PlateStatus.HALTED
+                : MinionEntityService.PlateStatus.WORKING);
+        if (halted) {
+            return;
+        }
+
+        // 产量倍率时长仅在实际运转（非休眠、非停工）时衰减
         minion.tickMultiplier(config.get().tickPeriod());
 
         // 燃料按时间衰减，耗尽后清除加速（无燃料也能工作，燃料只加速）
@@ -296,22 +351,6 @@ public final class MinionManager {
             }
         }
 
-        // GUI 正被观看时每秒刷新状态卡（燃料剩余秒数/下次工作倒计时/仓存等实时跳动）
-        if (minion.shouldRefreshGuiView(nowTick)) {
-            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
-            minion.markGuiRefreshed(nowTick);
-        }
-
-        // 满仓停工（对齐 Hypixel）：仓库已满且无自动售卖手段则停产，头顶展示告警；
-        // 玩家取货/开售卖后下轮自动恢复
-        boolean halted = minion.isStorageFull() && !shouldAutoSell(minion);
-        entities.refreshStatus(minion, halted
-                ? MinionEntityService.PlateStatus.HALTED
-                : MinionEntityService.PlateStatus.WORKING);
-        if (halted) {
-            return;
-        }
-
         if (!minion.canWorkNow(nowTick) || !skyblock.canWorkAt(minion)) {
             return;
         }
@@ -320,6 +359,9 @@ public final class MinionManager {
 
     private void performWork(Minion minion, World world, BlockLocation loc) {
         MinionTypeConfig cfg = config.get().type(minion.type());
+        if (cfg == null) {
+            return;
+        }
         MinionWorkStrategy strategy = strategies.get(minion.type().behavior());
         Block anchor = world.getBlockAt(loc.x(), loc.y(), loc.z());
 
@@ -355,7 +397,7 @@ public final class MinionManager {
         minion.scheduleNext(Bukkit.getCurrentTick(), cd);
         entities.swing(minion);
 
-        // 升级模块处理链：自动熔炼 -> 自动压缩 -> 钻石散布（Hypixel 原版玩法）
+        // 升级模块掉落链：自动熔炼 -> 钻石散布 -> 腐化之土（压缩类模块走仓储级结算，见 processMinion）
         List<ItemStack> drops = upgrades.processDrops(minion, outcome.drops(), ThreadLocalRandom.current());
         // 专属稀有掉落（在模块链之后 roll，避免被熔炼/压缩转换）：对齐 Hypixel 各仆从的专属稀有掉落
         if (cfg.hasRareDrop() && ThreadLocalRandom.current().nextDouble() < cfg.rareDropChance()) {
@@ -363,21 +405,18 @@ public final class MinionManager {
             rareDropRolls.incrementAndGet();
             Component rare = Messages.rareDrop(cfg.displayName(), MaterialNames.of(cfg.rareDrop()));
             if (config.get().rareDropBroadcast()) {
-                Bukkit.getServer().broadcast(rare); // 全服广播（Hypixel 兴奋点，可配为仅通知主人）
+                Bukkit.getGlobalRegionScheduler().execute(plugin, () ->
+                        Bukkit.getServer().broadcast(rare));
             } else {
-                Player ownerOnline = Bukkit.getPlayer(minion.owner());
-                if (ownerOnline != null) {
-                    ownerOnline.sendMessage(rare);
-                }
+                PlayerTasks.run(plugin, minion.owner(), player -> player.sendMessage(rare));
             }
             // 主人在线：Title 高光 + 挑战完成音（Hypixel 稀有时刻仪式感）
-            Player ownerForFx = Bukkit.getPlayer(minion.owner());
-            if (ownerForFx != null) {
+            PlayerTasks.run(plugin, minion.owner(), ownerForFx -> {
                 com.hcs.minions.util.Fx.title(ownerForFx,
                         "<light_purple>✦ 稀有掉落!</light_purple>",
                         "<gray>" + MaterialNames.of(cfg.rareDrop()) + "</gray>");
                 com.hcs.minions.util.Fx.sound(ownerForFx, org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f);
-            }
+            });
             if (config.get().debug()) {
                 Logs.info("调试: 仆从 {} 触发稀有掉落 {}", minion.type().key(), cfg.rareDrop());
             }
@@ -408,7 +447,13 @@ public final class MinionManager {
             }
         }
 
-        if (shouldAutoSell(minion) && minion.isStorageFull()) {
+        // 即时售卖漏斗（Hypixel Budget/Enchanted Hopper）：每次产出后按折价立即卖，无需等满仓。
+        // 与"满仓全价卖"（autoSell/自动售卖漏斗）互斥优先级：满仓全价路径在下方；
+        // 装了即时漏斗则本轮已折价清仓，通常不会再触发满仓。
+        double hopperRatio = upgrades.instantSellRatio(minion);
+        if (hopperRatio > 0.0) {
+            sell.sellAll(minion, hopperRatio);
+        } else if (shouldAutoSell(minion) && minion.isStorageFull()) {
             sell.sellAll(minion);
         }
         minion.markDirty();
@@ -417,6 +462,11 @@ public final class MinionManager {
     /** 自动售卖触发条件：显式开启 autoSell 开关，或装备了「自动售卖漏斗」模块（对齐 Hypixel Hopper）。 */
     private boolean shouldAutoSell(Minion minion) {
         return minion.autoSell() || upgrades.hasAutoSell(minion);
+    }
+
+    /** 是否具备任一"满仓不停工"手段：满仓全价卖 或 即时折价漏斗（对齐 Hypixel：装漏斗永不停工）。 */
+    private boolean hasSellOutlet(Minion minion) {
+        return shouldAutoSell(minion) || upgrades.hasInstantHopper(minion);
     }
 
     /**
@@ -447,32 +497,40 @@ public final class MinionManager {
     // ------------------------------------------------------------------
 
     public boolean place(Minion minion, Player player) {
+        if (!ready) {
+            return false;
+        }
         // 上限 = 权限上限 + Collection 里程碑槽位加成（对齐 Hypixel 里程碑解锁仆从位玩法）。
         // 用 ownerCount 原子「预占位」关闭 Folia 多 region 并发放置的 TOCTOU 超限窗口：
         // 先 merge +1，超限则立即 -1 回滚并拒绝
-        int cap = permissions.maxMinions(player) + collection.bonusSlots(minion.owner());
-        if (ownerCount.merge(minion.owner(), 1, Integer::sum) > cap) {
-            ownerCount.merge(minion.owner(), -1, Integer::sum);
-            return false;
+        MinionTypeConfig cfg;
+        synchronized (placementLock) {
+            int cap = permissions.maxMinions(player) + collection.bonusSlots(minion.owner());
+            if (ownerCount.merge(minion.owner(), 1, Integer::sum) > cap) {
+                ownerCount.merge(minion.owner(), -1, Integer::sum);
+                return false;
+            }
+            // 最小间距与坐标占位必须在同一把锁内完成，避免两个 region 同时通过空间检查。
+            if (tooCloseToOtherMinion(minion.location())) {
+                ownerCount.merge(minion.owner(), -1, Integer::sum);
+                return false;
+            }
+            if (byLocation.putIfAbsent(minion.location(), minion.id()) != null) {
+                ownerCount.merge(minion.owner(), -1, Integer::sum);
+                return false;
+            }
+            minions.put(minion.id(), minion);
+            cfg = config.get().type(minion.type());
         }
-        // 最小间距：防止两个仆从工作区重叠（监听器预检查给出专属提示，此处兜底）
-        if (tooCloseToOtherMinion(minion.location())) {
-            ownerCount.merge(minion.owner(), -1, Integer::sum);
-            return false;
-        }
-        // 坐标占位校验：同一格禁止重复放置（监听器预检查给出专属提示，此处 putIfAbsent 兜底并发竞态）
-        if (byLocation.putIfAbsent(minion.location(), minion.id()) != null) {
-            ownerCount.merge(minion.owner(), -1, Integer::sum);
-            return false;
-        }
-        minions.put(minion.id(), minion);
         entities.spawn(minion);
         repository.save(minion);
-        MinionTypeConfig cfg = config.get().type(minion.type());
+        if (cfg == null) {
+            cfg = config.get().type(minion.type());
+        }
         Logs.info("放置仆从 type={} level={} loc=({},{},{}) radius={} fuel={}",
                 minion.type().key(), minion.level(),
                 minion.location().x(), minion.location().y(), minion.location().z(),
-                cfg.radiusFor(minion.level()), minion.fuelTicks());
+                cfg == null ? 0 : cfg.radiusFor(minion.level()), minion.fuelTicks());
         Bukkit.getPluginManager().callEvent(new MinionPlacedEvent(minion, player));
         return true;
     }
@@ -510,6 +568,7 @@ public final class MinionManager {
         byLocation.remove(minion.location());
         ownerCount.computeIfPresent(minion.owner(), (k, v) -> v <= 1 ? null : v - 1);
         lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
+        sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
         entities.despawn(minion);
         repository.delete(minion.id());
         Bukkit.getPluginManager().callEvent(new MinionRemovedEvent(minion, player));
@@ -518,7 +577,16 @@ public final class MinionManager {
 
     /** 右键小人打开仆从 GUI（仓库内联 + 燃料/升级/收集/拾取）。 */
     public void openGui(Player player, Minion minion) {
-        minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
+        if (!ready) {
+            player.sendMessage(Component.text("仆从系统正在加载，请稍后再试"));
+            return;
+        }
+        MinionTypeConfig typeConfig = config.get().type(minion.type());
+        if (typeConfig == null) {
+            player.sendMessage(Component.text("该仆从类型配置已失效，请联系管理员"));
+            return;
+        }
+        minion.refresh(typeConfig, config.get().upgradeRequirePreviousBody());
         player.openInventory(minion.storage());
     }
 
@@ -582,8 +650,8 @@ public final class MinionManager {
         int working = 0;
         for (Minion m : minions.values()) {
             totalProducedAll += m.totalProduced();
-            // 口径与 processMinion 的停工判断一致：仓库未满或具备自动售卖手段即视为工作中
-            if (!m.isStorageFull() || shouldAutoSell(m)) {
+            // 口径与 processMinion 的停工判断一致：仓库未满或具备售卖出口（全价/即时漏斗）即视为工作中
+            if (!m.isStorageFull() || hasSellOutlet(m)) {
                 working++;
             }
         }

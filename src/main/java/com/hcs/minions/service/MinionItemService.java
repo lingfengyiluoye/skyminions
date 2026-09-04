@@ -40,6 +40,8 @@ public final class MinionItemService {
     private final NamespacedKey storageKey;
     private final NamespacedKey upgrade1Key;
     private final NamespacedKey upgrade2Key;
+    private final NamespacedKey upgrade3Key;
+    private final NamespacedKey upgrade4Key;
     private final NamespacedKey skinKey;
     private final ConfigProvider config;
 
@@ -55,6 +57,8 @@ public final class MinionItemService {
         this.storageKey = new NamespacedKey(plugin, "minion_storage");
         this.upgrade1Key = new NamespacedKey(plugin, "minion_upgrade1");
         this.upgrade2Key = new NamespacedKey(plugin, "minion_upgrade2");
+        this.upgrade3Key = new NamespacedKey(plugin, "minion_upgrade3");
+        this.upgrade4Key = new NamespacedKey(plugin, "minion_upgrade4");
         this.skinKey = new NamespacedKey(plugin, "minion_skin");
         this.config = config;
     }
@@ -118,6 +122,12 @@ public final class MinionItemService {
         }
         if (minion.upgrade2() != null) {
             meta.getPersistentDataContainer().set(upgrade2Key, PersistentDataType.STRING, minion.upgrade2().key());
+        }
+        if (minion.upgrade3() != null) {
+            meta.getPersistentDataContainer().set(upgrade3Key, PersistentDataType.STRING, minion.upgrade3().key());
+        }
+        if (minion.upgrade4() != null) {
+            meta.getPersistentDataContainer().set(upgrade4Key, PersistentDataType.STRING, minion.upgrade4().key());
         }
         meta.getPersistentDataContainer().set(skinKey, PersistentDataType.STRING, minion.skin().key());
         item.setItemMeta(meta);
@@ -217,6 +227,14 @@ public final class MinionItemService {
 
     public MinionUpgradeType parseUpgrade2(ItemStack item) {
         return parseUpgrade(item, upgrade2Key);
+    }
+
+    public MinionUpgradeType parseUpgrade3(ItemStack item) {
+        return parseUpgrade(item, upgrade3Key);
+    }
+
+    public MinionUpgradeType parseUpgrade4(ItemStack item) {
+        return parseUpgrade(item, upgrade4Key);
     }
 
     private MinionUpgradeType parseUpgrade(ItemStack item, NamespacedKey key) {

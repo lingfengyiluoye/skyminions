@@ -65,10 +65,6 @@ public final class Messages {
     public static Component USAGE_MATERIALS;
     public static Component LEVEL_MUST_BE_NUMBER;
     public static Component SKIN_TIP;
-    public static Component LAYOUT_HEADER;
-    public static Component LAYOUT_TIP_CENTER;
-    public static Component LAYOUT_TIP_LIGHT;
-    public static Component LAYOUT_TIP_SHARED;
     public static Component FUEL_HELP_HEADER;
     public static Component FUEL_HELP_TIP;
     public static Component FUEL_STATUS_NONE;
@@ -107,6 +103,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-slot-occupied", "<red>✖ 该模块槽已被占用</red>\n<gray>先卸下当前模块再装备新的</gray>");
         DEFAULTS.put("upgrade-slot-empty", "<gray>该模块槽是空的</gray>");
         DEFAULTS.put("auto-sell-toggled", "<green>✔ 自动出售已{0}</green>");
+        DEFAULTS.put("upgrade-duplicate", "<red>✖ 已装备相同模块</red>\n<gray><aqua>{0}</aqua> 不能重复装备到多个槽</gray>");
         DEFAULTS.put("upgrade-equipped", "<green>✔ 已装备模块</green>\n<aqua>{0}</aqua>");
         DEFAULTS.put("upgrade-removed", "<green>✔ 已卸下模块</green>\n<aqua>{0}</aqua> 已返还到背包");
         DEFAULTS.put("skin-changed", "<light_purple>✔ 皮肤已切换</light_purple>\n<light_purple>{0}</light_purple>");
@@ -115,7 +112,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
         DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion materials \\<类型> [等级]</white> <gray>- 材料获取指南</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
         DEFAULTS.put("usage-give", "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>");
-        DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖)</dark_gray>");
+        DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖) | budget_hopper(简易漏斗) | enchanted_hopper(附魔漏斗) | corrupt_soil(腐化之土) | storage_small/medium/large(储物箱)</dark_gray>");
         DEFAULTS.put("level-must-be-number", "<red>✖ 等级必须是数字</red>");
         DEFAULTS.put("unknown-type", "<red>✖ 未知类型: {0}</red>");
         DEFAULTS.put("unknown-upgrade", "<red>✖ 未知模块: {0}</red>");
@@ -134,13 +131,6 @@ public final class Messages {
         DEFAULTS.put("milestone-reached", "<green>✔ 资源累计里程碑达成！</green>\n<white>{0}</white> <gray>累计</gray> <yellow>{1}</yellow>\n<gray>奖励 <gold>{2} 金币</gold></gray>");
         DEFAULTS.put("milestone-slot-bonus", "<gray>，仆从槽位 <yellow>+1</yellow></gray>");
         DEFAULTS.put("rare-drop", "<gold>✦ 你的{0}获得了稀有掉落</gold> <light_purple>{1}</light_purple>");
-        DEFAULTS.put("layout-header", "<aqua><bold>▼ 理想布局</bold></aqua>");
-        DEFAULTS.put("layout-tip-center", "<gray>· 中心留空，四周填充可采集方块</gray>");
-        DEFAULTS.put("layout-tip-light", "<gray>· 保证光照 ≥ 8，防止刷怪干扰</gray>");
-        DEFAULTS.put("layout-tip-shared", "<gray>· 多个仆从共享边界，可最大化产出</gray>");
-        DEFAULTS.put("layout-range", "<white>工作范围</white><gray>: <yellow>{0}x{0}</yellow>（中心放置仆从）</gray>");
-        DEFAULTS.put("layout-enabled", "<green>✔ 理想布局已开启</green>\n<gray>圆石仆从自动摆水与岩浆刷石；农夫自动耕地播种</gray>");
-        DEFAULTS.put("layout-disabled", "<gray>理想布局已关闭，摆放的水/岩浆/耕地作物已还原</gray>");
         DEFAULTS.put("unlock-required", "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>");
         DEFAULTS.put("offline-header", "<gold><bold>▲ 离线收获 · {0}</bold></gold>");
         DEFAULTS.put("offline-detail", "<dark_gray>· {0} <yellow>×{1}</yellow></dark_gray>");
@@ -194,10 +184,6 @@ public final class Messages {
         USAGE_MATERIALS = render("usage-materials");
         LEVEL_MUST_BE_NUMBER = render("level-must-be-number");
         SKIN_TIP = render("skin-tip");
-        LAYOUT_HEADER = render("layout-header");
-        LAYOUT_TIP_CENTER = render("layout-tip-center");
-        LAYOUT_TIP_LIGHT = render("layout-tip-light");
-        LAYOUT_TIP_SHARED = render("layout-tip-shared");
         FUEL_HELP_HEADER = render("fuel-help-header");
         FUEL_HELP_TIP = render("fuel-help-tip");
         FUEL_STATUS_NONE = render("fuel-status-none");
@@ -235,16 +221,16 @@ public final class Messages {
         return render("fuel-unequip-empty");
     }
 
-    public static Component autoSellToggled(boolean on) {
-        return render("auto-sell-toggled", on ? "开启" : "关闭");
-    }
-
     public static Component upgradeEquipped(String name) {
         return render("upgrade-equipped", name);
     }
 
     public static Component upgradeRemoved(String name) {
         return render("upgrade-removed", name);
+    }
+
+    public static Component upgradeDuplicate(String name) {
+        return render("upgrade-duplicate", name);
     }
 
     public static Component skinChanged(String name) {
@@ -303,18 +289,6 @@ public final class Messages {
 
     public static Component availableSkins(String list) {
         return render("available-skins", list);
-    }
-
-    public static Component layoutRange(int side) {
-        return render("layout-range", side);
-    }
-
-    public static Component layoutEnabled() {
-        return render("layout-enabled");
-    }
-
-    public static Component layoutDisabled() {
-        return render("layout-disabled");
     }
 
     public static Component unlockRequired(String product, long need, long have) {

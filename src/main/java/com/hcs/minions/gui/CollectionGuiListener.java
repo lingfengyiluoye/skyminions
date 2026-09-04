@@ -100,15 +100,19 @@ public final class CollectionGuiListener implements Listener {
             return; // 非卡片区槽位
         }
         int index = holder.page() * cards.length + inPage;
-        // 与 CollectionGui.visibleTypes 相同的注册顺序还原被点击的类型
-        List<MinionType> types = new java.util.ArrayList<>(MinionType.all());
+        // 必须用与 CollectionGui.renderCards 完全相同的「过滤后」列表还原类型：
+        // 渲染是按当前过滤（holder.filter()）后的列表分页的，若此处用未过滤的 MinionType.all()
+        // 反查，激活分类过滤时会点到错位的类型（bug）。
+        List<MinionType> types = new java.util.ArrayList<>();
+        for (MinionType t : MinionType.all()) {
+            if (holder.filter() == null || t.category() == holder.filter()) {
+                types.add(t);
+            }
+        }
         if (index < 0 || index >= types.size()) {
             return;
         }
         MinionType clicked = types.get(index);
-        if (holder.filter() != null && clicked.category() != holder.filter()) {
-            return;
-        }
         openCraftOrDetails(player, clicked);
     }
 

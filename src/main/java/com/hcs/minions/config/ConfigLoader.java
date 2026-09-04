@@ -36,6 +36,8 @@ public final class ConfigLoader {
 
     public static PluginConfig load(JavaPlugin plugin) {
         plugin.saveDefaultConfig();
+        // JavaPlugin 缓存的 FileConfiguration 不会自动感知磁盘修改；重载入口必须显式刷新。
+        plugin.reloadConfig();
         FileConfiguration yaml = plugin.getConfig();
 
         DatabaseConfig database = new DatabaseConfig(
@@ -52,8 +54,8 @@ public final class ConfigLoader {
         EconomyConfig economy = new EconomyConfig(
                 yaml.getBoolean("economy.enabled", true),
                 yaml.getBoolean("economy.auto-sell-on-full", true),
-                yaml.getLong("economy.sell-interval-ticks", 400),
-                yaml.getDouble("economy.price-multiplier", 1.0)
+                Math.max(4L, yaml.getLong("economy.sell-interval-ticks", 400)),
+                positiveFinite(yaml.getDouble("economy.price-multiplier", 1.0), 1.0)
         );
 
         RenderConfig render = new RenderConfig(
@@ -67,7 +69,8 @@ public final class ConfigLoader {
             maxChecks = 48;
         }
 
-        Map<String, MinionTypeConfig> types = loadTypes(yaml.getConfigurationSection("types"));
+        Map<String, MinionTypeConfig> types = loadTypes(yaml.getConfigurationSection("types"),
+                yaml.getBoolean("upgrade-require-previous-body", true));
 
         // 皮肤纹理覆盖（skins 段）：与配置同步热重载，空值不覆盖内置纹理
         MinionSkin.loadTextures(yaml);
@@ -79,9 +82,9 @@ public final class ConfigLoader {
 
         return new PluginConfig(
                 database, economy, render,
-                yaml.getLong("tick-period", 20),
+                Math.max(1L, yaml.getLong("tick-period", 20)),
                 maxChecks,
-                yaml.getInt("max-minions-per-player", 10),
+                Math.max(0, yaml.getInt("max-minions-per-player", 10)),
                 str(yaml, "head-texture", DEFAULT_HEAD_TEXTURE),
                 yaml.getBoolean("debug", false),
                 types,
@@ -93,6 +96,10 @@ public final class ConfigLoader {
                 yaml.getInt("min-placement-distance", 1),
                 yaml.getBoolean("rare-drop-broadcast", true)
         );
+    }
+
+    private static double positiveFinite(double value, double fallback) {
+        return Double.isFinite(value) && value > 0 ? value : fallback;
     }
 
     /** 解析离线收益配置（缺失时用安全默认值）。 */
@@ -130,7 +137,7 @@ public final class ConfigLoader {
         );
     }
 
-    private static Map<String, MinionTypeConfig> loadTypes(ConfigurationSection section) {
+    private static Map<String, MinionTypeConfig> loadTypes(ConfigurationSection section, boolean requireBody) {
         Map<String, MinionTypeConfig> out = new LinkedHashMap<>();
         if (section == null) {
             MinionType.loadAll(List.of());
@@ -212,9 +219,59 @@ public final class ConfigLoader {
                     java.util.Set.copyOf(s.getStringList("preferred-targets")),
                     s.getString("ranch-animal")
             ));
+            checkRecipeCapacity(key, out.get(keyLower), requireBody);
         }
         MinionType.loadAll(kinds);
         return out;
+    }
+
+    /** 信息卡最多展示的材料行数（与 gui.yml craft-gui.info.lore 的 {m1}~{m4} 占位符一致）。 */
+    private static final int MAX_INFO_ROWS = 4;
+
+    /**
+     * 配方容量体检（启动/热重载期日志告警，不阻断加载）：
+     * 逐级取生效配方（含 upgrade-cost-growth 陡增与 upgrade-recipe-at 覆盖），检查
+     * ① 材料种类是否超过信息卡可显示行数；② 整叠装箱后是否超过合成格数量。
+     * 二者任一超限都会让玩家“看得见配方却摆不齐/看不全”，必须在启动日志里提前暴露。
+     */
+    private static void checkRecipeCapacity(String key, MinionTypeConfig cfg, boolean requireBody) {
+        if (cfg == null) {
+            return;
+        }
+        int gridSlots = com.hcs.minions.util.GuiLayout.slots("craft.grid.slots").length;
+        int worstLevel = -1;
+        int worstSlots = 0;
+        int maxKinds = 0;
+        for (int level = 1; level < cfg.maxLevel(); level++) {
+            Map<ItemRef, Long> recipe = cfg.recipeFor(level);
+            maxKinds = Math.max(maxKinds, recipe.size());
+            int needed = requiredGridSlots(recipe, requireBody);
+            if (needed > worstSlots) {
+                worstSlots = needed;
+                worstLevel = level;
+            }
+        }
+        if (maxKinds > MAX_INFO_ROWS) {
+            Logs.warn("仆从 {} 的升级配方最多有 {} 种材料，超过合成信息卡可显示的 {} 行，"
+                            + "多出的材料在 GUI 上看不到（建议拆到 upgrade-recipe-at，或在 gui.yml 给 craft-gui.info.lore 加行）",
+                    key, maxKinds, MAX_INFO_ROWS);
+        }
+        if (worstLevel > 0 && worstSlots > gridSlots) {
+            Logs.warn("仆从 {} 第 {}→{} 级配方整叠装箱需 {} 格，超过合成格 {} 格，玩家无法一次摆齐"
+                            + "（请调低材料数量，或在 gui.yml 扩大 layout.craft.grid.slots）",
+                    key, worstLevel, worstLevel + 1, worstSlots, gridSlots);
+        }
+    }
+
+    /** 纯计算：配方整叠装箱所需格数（每种材料按最大堆叠向上取整，需本体时 +1 格）。 */
+    static int requiredGridSlots(Map<ItemRef, Long> recipe, boolean requireBody) {
+        int slots = requireBody ? 1 : 0;
+        for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
+            int maxStack = Math.max(1, e.getKey().icon().getMaxStackSize());
+            long amount = Math.max(0, e.getValue());
+            slots += (int) ((amount + maxStack - 1) / maxStack);
+        }
+        return slots;
     }
 
     private static MinionBehavior parseBehavior(String raw, String key) {

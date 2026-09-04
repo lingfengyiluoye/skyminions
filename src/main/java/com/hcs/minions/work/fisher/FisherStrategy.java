@@ -30,12 +30,14 @@ public final class FisherStrategy implements MinionWorkStrategy {
 
     @Override
     public boolean canWork(WorkContext ctx) {
-        // 轻量检查：anchor 周围 5x5x3 立体范围是否有水（不推进搜索游标）。
+        // 轻量检查：anchor 周围立体范围是否有水（不推进搜索游标）。
+        // 水平半径取 ctx.radius()（含范围扩展模块，与其他策略同口径），下限 2 保证 5x5 基线；
         // 高度含 -1..+1：仆从常被放在比水面高一格的岸边，只查同层会判为无水不工作
         Block anchor = ctx.anchor();
+        int r = Math.max(2, ctx.radius());
         for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                for (int dz = -2; dz <= 2; dz++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
                     if (anchor.getRelative(dx, dy, dz).getType() == Material.WATER) {
                         return true;
                     }

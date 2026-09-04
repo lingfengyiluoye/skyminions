@@ -34,24 +34,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 运行时仆从。单个 54 格 GUI，对齐 Hypixel SkyBlock Minions 的界面设计：
- * 头颅居中作视觉锚点，信息书含完整产出统计，模块槽位于存储区下方。
+ * 运行时仆从。单个 54 格 GUI，对齐 Hypixel SkyBlock Minions 的界面设计。
  * 所有卡片/按钮文案均由 gui.yml 模板驱动（见 {@link GuiText}），可自定义与热重载。
  *
  * <pre>
- * 顶行  0 燃料 | 3 信息卡 | 4 头颅 | 5 升级 | 7 皮肤
- * 存储  9..44（36 格，按 Tier 解锁）
- * 底行  47/48 模块槽 | 49 收集全部(居中) | 50 自动售卖 | 51 理想布局 | 52 拾取 | 53 关闭
+ * 顶行  0 燃料 | 4 头颅 | 6 信息卡 | 7 皮肤 | 8 升级
+ * 左列  9/18/27/36 四个模块槽（燃料下方隔一格竖排），10/19/28/37 间隔列
+ * 存储  11..44 去掉左两列后的 28 格（按 Tier 解锁）
+ * 底行  49 收集全部(居中) | 50 拾取 | 51 关闭
  * </pre>
  */
 public final class Minion {
 
     public static final int GUI_SIZE = 54;
 
-    // Hypixel 风格布局（槽位/材质均由 gui.yml layout 段驱动，见 {@link GuiLayout}）：
-    //   顶行       : 燃料 | 装饰 | 装饰 | 信息卡 | 头颅(居中) | 升级 | 装饰 | 皮肤 | 装饰
-    //   存储区     : 36 格（按 Tier 解锁，锁定格用 locked 材质）
-    //   底行       : 装饰 | 装饰 | 模块1 | 模块2 | 收集全部(居中) | 自动售卖 | 理想布局 | 拾取 | 关闭
+    // Hypixel 风格布局（槽位/材质均由 gui.yml layout 段驱动，见 {@link GuiLayout}）。
     public static int[] storageSlots() {
         return GuiLayout.slots("storage.slots");
     }
@@ -84,16 +81,16 @@ public final class Minion {
         return GuiLayout.slot("storage.module2.slot");
     }
 
+    public static int module3Slot() {
+        return GuiLayout.slot("storage.module3.slot");
+    }
+
+    public static int module4Slot() {
+        return GuiLayout.slot("storage.module4.slot");
+    }
+
     public static int collectSlot() {
         return GuiLayout.slot("storage.collect.slot");
-    }
-
-    public static int autosellSlot() {
-        return GuiLayout.slot("storage.autosell.slot");
-    }
-
-    public static int layoutSlot() {
-        return GuiLayout.slot("storage.layout.slot");
     }
 
     public static int pickupSlot() {
@@ -124,17 +121,11 @@ public final class Minion {
     private volatile String islandId;
     private volatile MinionUpgradeType upgrade1;
     private volatile MinionUpgradeType upgrade2;
+    private volatile MinionUpgradeType upgrade3;
+    private volatile MinionUpgradeType upgrade4;
     private volatile MinionSkin skin = MinionSkin.DEFAULT;
     /** 盔甲架朝向 yaw（放置时面向放置者）。仅运行时生效，不入存档，重启后重生为默认朝向。 */
     private volatile float facing;
-    /** 理想布局开关（目前仅圆石生成器实际生效：自动摆水/岩浆）。运行时状态，不入存档。 */
-    private volatile boolean idealLayout;
-    /** 理想布局摆放的流体块位置（关闭/拾取时还原为空气）。 */
-    /** 布局摆放的方块位置 -> 摆放前的原方块（还原依据）。 */
-    private final java.util.Map<BlockLocation, Material> layoutBlocks = new java.util.concurrent.ConcurrentHashMap<>();
-    /** 自动布局可能播种的作物集合（农夫布局还原时识别「我们种的作物」）。 */
-    private static final java.util.Set<Material> LAYOUT_CROPS =
-            java.util.EnumSet.of(Material.WHEAT, Material.CARROTS, Material.POTATOES, Material.BEETROOTS);
 
     private final AtomicLong nextWorkTick = new AtomicLong();
     private volatile int scanCursor;
@@ -172,8 +163,10 @@ public final class Minion {
         this.fuelTicks = fuelTicks;
         this.lastActiveEpochMs = lastActiveEpochMs;
         this.islandId = islandId;
-        this.storage = Bukkit.createInventory(new StorageHolder(id), GUI_SIZE,
+        StorageHolder holder = new StorageHolder(id);
+        this.storage = Bukkit.createInventory(holder, GUI_SIZE,
                 GuiText.title("title", Map.of("name", type().displayName())));
+        holder.attach(this.storage); // 回填真实 Inventory，满足 InventoryHolder 契约
     }
 
     public UUID id() {
@@ -197,66 +190,38 @@ public final class Minion {
         this.facing = facing;
     }
 
-    // ---- 理想布局 ----
-    public boolean idealLayout() {
-        return idealLayout;
-    }
-
-    public void setIdealLayout(boolean on) {
-        this.idealLayout = on;
-    }
-
-    /** 记录布局摆放的方块位置 -> 摆放前的原方块（关闭/拾取时按原样还原）。 */
-    public void addLayoutBlock(BlockLocation loc, Material original) {
-        layoutBlocks.putIfAbsent(loc, original);
-    }
-
-    public boolean hasLayoutBlocks() {
-        return !layoutBlocks.isEmpty();
-    }
-
-    /**
-     * 还原布局摆放的方块（尽力而为）：只清理「我们摆上去的产物」——
-     * 原为空气的位置上的流体/作物清为空气，被耕过的耕地还原为原方块；
-     * 玩家后续改动过的位置不触碰。关闭理想布局与拾取仆从时调用。
-     */
-    public void cleanupLayoutBlocks() {
-        if (layoutBlocks.isEmpty()) {
-            return;
-        }
-        World world = location.bukkitWorld();
-        if (world != null) {
-            for (Map.Entry<BlockLocation, Material> e : layoutBlocks.entrySet()) {
-                Block b = world.getBlockAt(e.getKey().x(), e.getKey().y(), e.getKey().z());
-                Material orig = e.getValue();
-                if (orig.isAir()) {
-                    if (b.getType() == Material.WATER || b.getType() == Material.LAVA
-                            || LAYOUT_CROPS.contains(b.getType())) {
-                        b.setType(Material.AIR, false);
-                    }
-                } else if (b.getType() == Material.FARMLAND && orig != Material.FARMLAND) {
-                    b.setType(orig, false); // 耕地还原为泥土/草方块等
-                }
-            }
-        }
-        layoutBlocks.clear();
-    }
-
+    // ---- 存储 ----
     public Inventory storage() {
         return storage;
     }
 
     public int unlockedSlots() {
-        // 36 格存储，Tier 1 解锁 9 格，每级 +3 格（对齐 Hypixel 存储随等级成长）
-        return Math.min(storageSlots().length, 9 + (level - 1) * 3);
+        // 基础：28 格存储，Tier 1 解锁 7 格，每级 +3 格（左侧让给模块列，右侧为存储区）
+        int base = 7 + (level - 1) * 3;
+        // 储物箱模块额外解锁存储格（对齐 Hypixel Storage 升级：小/中/大 +6/+12/+18）
+        int bonus = 0;
+        for (MinionUpgradeType up : new MinionUpgradeType[]{upgrade1, upgrade2, upgrade3, upgrade4}) {
+            if (up != null) {
+                bonus += up.bonusStorageSlots();
+            }
+        }
+        return Math.min(storageSlots().length, base + bonus);
     }
 
-    /** 模块槽解锁 Tier 门槛（对齐 Hypixel 原版：低 Tier 无模块槽）。 */
-    private static final int UPGRADE_SLOT1_UNLOCK_TIER = 4;
-    private static final int UPGRADE_SLOT2_UNLOCK_TIER = 8;
+    /** 模块槽解锁 Tier 门槛（对齐 Hypixel 原版：低 Tier 逐步解锁 4 个模块槽）。 */
+    private static final int UPGRADE_SLOT1_UNLOCK_TIER = 3;
+    private static final int UPGRADE_SLOT2_UNLOCK_TIER = 6;
+    private static final int UPGRADE_SLOT3_UNLOCK_TIER = 9;
+    private static final int UPGRADE_SLOT4_UNLOCK_TIER = 11;
 
-    /** 当前已解锁的模块槽数量（0~2，随 Tier 增长）。 */
+    /** 当前已解锁的模块槽数量（0~4，随 Tier 增长）。 */
     public int unlockedUpgradeSlots() {
+        if (level >= UPGRADE_SLOT4_UNLOCK_TIER) {
+            return 4;
+        }
+        if (level >= UPGRADE_SLOT3_UNLOCK_TIER) {
+            return 3;
+        }
         if (level >= UPGRADE_SLOT2_UNLOCK_TIER) {
             return 2;
         }
@@ -264,6 +229,16 @@ public final class Minion {
             return 1;
         }
         return 0;
+    }
+
+    /** 某模块槽（1~4）的解锁 Tier 门槛。 */
+    public static int unlockTierOf(int slot) {
+        return switch (slot) {
+            case 1 -> UPGRADE_SLOT1_UNLOCK_TIER;
+            case 2 -> UPGRADE_SLOT2_UNLOCK_TIER;
+            case 3 -> UPGRADE_SLOT3_UNLOCK_TIER;
+            default -> UPGRADE_SLOT4_UNLOCK_TIER;
+        };
     }
 
     public static boolean isStorageSlot(int rawSlot) {
@@ -422,11 +397,8 @@ public final class Minion {
 
     // ---- GUI 渲染 ----
     public void refresh(MinionTypeConfig cfg, boolean requireBody) {
-        // 统一深色边框玻璃（顶栏/底栏同色，存储区锁定格用浅色区分）——材质均由 layout 配置
-        ItemStack decor = named(GuiLayout.material("storage.decor.material"), Component.empty());
-        for (int s : GuiLayout.slots("storage.decor.slots")) {
-            storage.setItem(s, decor);
-        }
+        // 边框装饰玻璃：支持多色调色板（storage.decor.slots 逐槽轮用 storage.decor.materials 颜色）
+        renderDecor();
         Material lockedMat = GuiLayout.material("storage.locked.material");
         ItemStack locked = named(lockedMat,
                 GuiText.title("locked-slot.title"), GuiText.lore("locked-slot.lore"));
@@ -445,20 +417,36 @@ public final class Minion {
         storage.setItem(headSlot(), headItem(cfg));
         storage.setItem(upgradeSlot(), upgradeButton(cfg, requireBody));
         storage.setItem(skinSlot(), skinItem());
-        storage.setItem(module1Slot(), upgradeSlotItem(upgrade1, 1, unlockedUpgradeSlots() >= 1));
-        storage.setItem(module2Slot(), upgradeSlotItem(upgrade2, 2, unlockedUpgradeSlots() >= 2));
+        int unlockedModules = unlockedUpgradeSlots();
+        storage.setItem(module1Slot(), upgradeSlotItem(upgrade1, 1, unlockedModules >= 1));
+        storage.setItem(module2Slot(), upgradeSlotItem(upgrade2, 2, unlockedModules >= 2));
+        storage.setItem(module3Slot(), upgradeSlotItem(upgrade3, 3, unlockedModules >= 3));
+        storage.setItem(module4Slot(), upgradeSlotItem(upgrade4, 4, unlockedModules >= 4));
         storage.setItem(collectSlot(), collectItem());
-        storage.setItem(autosellSlot(), autoSellItem());
-        storage.setItem(layoutSlot(), layoutItem(cfg));
         storage.setItem(pickupSlot(), pickupItem());
         storage.setItem(closeSlot(), named(GuiLayout.material("storage.close.material"), GuiText.title("close.title")));
+    }
+
+    /** 铺设边框装饰玻璃：多色调色板按槽位顺序循环取色（palette 为空则回退单色 decor.material）。 */
+    private void renderDecor() {
+        int[] slots = GuiLayout.slots("storage.decor.slots");
+        Material[] palette = GuiLayout.materials("storage.decor.materials");
+        Material single = GuiLayout.material("storage.decor.material");
+        Component blank = Component.empty();
+        for (int i = 0; i < slots.length; i++) {
+            Material mat = palette.length > 0 ? palette[i % palette.length] : single;
+            storage.setItem(slots[i], named(mat, blank));
+        }
     }
 
     /** 信息卡（Hypixel 信息书风格）：文案来自 gui.yml（info.*），数据以占位符注入；
      *  未配置稀有掉落时稀有行自动隐藏（可选行机制）。 */
     private ItemStack infoItem(MinionTypeConfig cfg) {
         double secondsPerAction = secondsPerAction(cfg, level);
-        int side = 2 * cfg.radiusFor(level) + 1;
+        // 工作范围含范围扩展模块（与实际工作同口径，否则信息卡永远 5x5、玩家以为模块无效）
+        int radius = com.hcs.minions.upgrade.UpgradeService.radiusWithExpander(
+                cfg.radiusFor(level), hasUpgrade(MinionUpgradeType.MINION_EXPANDER));
+        int side = 2 * radius + 1;
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
         v.put("tier", Roman.of(level));
@@ -625,8 +613,7 @@ public final class Minion {
 
     private ItemStack upgradeSlotItem(MinionUpgradeType upgrade, int n, boolean unlocked) {
         if (!unlocked) {
-            int tier = n == 1 ? UPGRADE_SLOT1_UNLOCK_TIER : UPGRADE_SLOT2_UNLOCK_TIER;
-            Map<String, String> v = Map.of("n", String.valueOf(n), "tier", Roman.of(tier));
+            Map<String, String> v = Map.of("n", String.valueOf(n), "tier", Roman.of(unlockTierOf(n)));
             return named(GuiLayout.material("storage.locked.material"),
                     GuiText.title("module-locked.title", v), GuiText.lore("module-locked.lore", v));
         }
@@ -645,12 +632,6 @@ public final class Minion {
         return named(GuiLayout.material("storage.collect.material"), GuiText.title("collect.title", v), GuiText.lore("collect.lore", v));
     }
 
-    private ItemStack autoSellItem() {
-        String key = autoSell ? "autosell-on" : "autosell-off";
-        Material icon = GuiLayout.material("storage.autosell.material-" + (autoSell ? "on" : "off"));
-        return named(icon, GuiText.title(key + ".title"), GuiText.lore(key + ".lore"));
-    }
-
     private ItemStack skinItem() {
         MinionSkin[] skins = MinionSkin.values();
         MinionSkin next = skins[(skin.ordinal() + 1) % skins.length];
@@ -658,28 +639,6 @@ public final class Minion {
         v.put("current", skin.displayName());
         v.put("next", next.displayName());
         return named(GuiLayout.material("storage.skin.material"), GuiText.title("skin.title", v), GuiText.lore("skin.lore", v));
-    }
-
-    private ItemStack layoutItem(MinionTypeConfig cfg) {
-        int side = 2 * cfg.radiusFor(level) + 1;
-        Map<String, String> v = new LinkedHashMap<>();
-        v.put("side", String.valueOf(side));
-        switch (type().behavior()) {
-            // 可执行开关类型：可选行 on/off 只渲染当前状态行
-            case GENERATOR -> {
-                v.put(idealLayout ? "on" : "off", "");
-                v.put("layout_hint", "自动摆水与岩浆，搭建经典刷石机");
-            }
-            case FARMING -> {
-                v.put(idealLayout ? "on" : "off", "");
-                v.put("layout_hint", "自动耕地播种，作物成熟后自动收割");
-            }
-            case MINING -> v.put("layout_hint", "矿石不会再生：请在范围内手动摆放目标矿石");
-            case FORAGING -> v.put("layout_hint", "请在范围内种树（砍伐后自动补种树苗）");
-            case FISHING -> v.put("layout_hint", "请在范围内留出水面");
-            default -> v.put("layout_hint", "该类型自动产出，无需布置方块");
-        }
-        return named(GuiLayout.material("storage.layout.material"), GuiText.title("layout.title", v), GuiText.lore("layout.lore", v));
     }
 
     private ItemStack pickupItem() {
@@ -873,24 +832,87 @@ public final class Minion {
         markDirty();
     }
 
-    public boolean hasUpgrade(MinionUpgradeType type) {
-        return type != null && (type == upgrade1 || type == upgrade2);
+    public MinionUpgradeType upgrade3() {
+        return upgrade3;
     }
 
-    /** 卸下指定模块槽（1 或 2）的模块并返回，空槽返回 null。 */
+    public void setUpgrade3(MinionUpgradeType type) {
+        this.upgrade3 = type;
+        markDirty();
+    }
+
+    public MinionUpgradeType upgrade4() {
+        return upgrade4;
+    }
+
+    public void setUpgrade4(MinionUpgradeType type) {
+        this.upgrade4 = type;
+        markDirty();
+    }
+
+    public boolean hasUpgrade(MinionUpgradeType type) {
+        return type != null && (type == upgrade1 || type == upgrade2 || type == upgrade3 || type == upgrade4);
+    }
+
+    /** 读取指定模块槽（1~4）当前装备的模块（空槽返回 null）。 */
+    public MinionUpgradeType upgradeAt(int slot) {
+        return switch (slot) {
+            case 1 -> upgrade1;
+            case 2 -> upgrade2;
+            case 3 -> upgrade3;
+            default -> upgrade4;
+        };
+    }
+
+    /** 装备模块到指定槽（1~4）。 */
+    public void setUpgradeAt(int slot, MinionUpgradeType type) {
+        switch (slot) {
+            case 1 -> upgrade1 = type;
+            case 2 -> upgrade2 = type;
+            case 3 -> upgrade3 = type;
+            default -> upgrade4 = type;
+        }
+        markDirty();
+    }
+
+    /** 卸下指定模块槽（1~4）的模块并返回，空槽返回 null。 */
     public MinionUpgradeType removeUpgradeSlot(int slot) {
-        MinionUpgradeType removed;
-        if (slot == 2) {
-            removed = upgrade2;
-            upgrade2 = null;
-        } else {
-            removed = upgrade1;
-            upgrade1 = null;
+        MinionUpgradeType removed = upgradeAt(slot);
+        switch (slot) {
+            case 1 -> upgrade1 = null;
+            case 2 -> upgrade2 = null;
+            case 3 -> upgrade3 = null;
+            default -> upgrade4 = null;
         }
         if (removed != null) {
             markDirty();
         }
         return removed;
+    }
+
+    /**
+     * 卸下储物箱模块后、被重新锁定的存储格里残留的物品（防止 refresh() 用锁定玻璃覆盖导致吞物）。
+     * 调用方须在同 region 线程把返回物品交还玩家/掉落，然后本方法已就地清空这些槽。
+     * 传入的 removed 为刚卸下的模块；非储物箱模块返回空列表。
+     */
+    public List<ItemStack> evictOverflowAfterRemoving(MinionUpgradeType removed) {
+        if (removed == null || removed.bonusStorageSlots() <= 0) {
+            return List.of();
+        }
+        // 模块字段此时已置空，unlockedSlots() 反映的是卸下后的新容量
+        int nowUnlocked = unlockedSlots();
+        List<ItemStack> evicted = new ArrayList<>();
+        for (int i = nowUnlocked; i < storageSlots().length; i++) {
+            ItemStack item = storage.getItem(storageSlots()[i]);
+            if (item != null && item.getType() != Material.AIR) {
+                evicted.add(item.clone());
+                storage.setItem(storageSlots()[i], null);
+            }
+        }
+        if (!evicted.isEmpty()) {
+            markDirty();
+        }
+        return evicted;
     }
 
     public boolean canWorkNow(long nowTick) {
@@ -950,6 +972,8 @@ public final class Minion {
                 fuelTicks, fuelBoost, multBoost, multTicks, lastActiveEpochMs, islandId,
                 upgrade1 == null ? null : upgrade1.key(),
                 upgrade2 == null ? null : upgrade2.key(),
+                upgrade3 == null ? null : upgrade3.key(),
+                upgrade4 == null ? null : upgrade4.key(),
                 skin.key(),
                 autoSell, totalProduced, permanentBoost,
                 serializeStorageItems()
@@ -967,9 +991,13 @@ public final class Minion {
         if (d.multTicks() > 0 && d.multBoost() > 1.0) {
             m.addMultiplier(d.multBoost(), d.multTicks());
         }
-        m.setStorageItems(ItemCodec.deserializeStacks(d.inventory()));
+        // 必须先装模块再灌仓库：storage 容量依赖储物箱模块（unlockedSlots），
+        // 若先 setStorageItems 时模块尚未装上，超出基础容量的物品会被当溢出丢弃（数据丢失）。
         m.setUpgrade1(MinionUpgradeType.fromKey(d.upgrade1()).orElse(null));
         m.setUpgrade2(MinionUpgradeType.fromKey(d.upgrade2()).orElse(null));
+        m.setUpgrade3(MinionUpgradeType.fromKey(d.upgrade3()).orElse(null));
+        m.setUpgrade4(MinionUpgradeType.fromKey(d.upgrade4()).orElse(null));
+        m.setStorageItems(ItemCodec.deserializeStacks(d.inventory()));
         m.setSkin(MinionSkin.fromKey(d.skin()).orElse(MinionSkin.DEFAULT));
         m.setAutoSell(d.autoSell());
         m.addProduced(d.totalProduced());
@@ -978,10 +1006,29 @@ public final class Minion {
         return m;
     }
 
-    public record StorageHolder(UUID minionId) implements InventoryHolder {
+    /**
+     * 仓库容器 holder：携带所属仆从 id，并在创建后回填真实 {@link Inventory}，
+     * 满足 {@link InventoryHolder} 契约（第三方插件调 {@code holder.getInventory()} 不再 NPE）。
+     */
+    public static final class StorageHolder implements InventoryHolder {
+        private final UUID minionId;
+        private Inventory inventory;
+
+        public StorageHolder(UUID minionId) {
+            this.minionId = minionId;
+        }
+
+        public UUID minionId() {
+            return minionId;
+        }
+
+        void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
         @Override
         public @NotNull Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 }

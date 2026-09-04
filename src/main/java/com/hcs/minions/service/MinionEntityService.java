@@ -108,8 +108,10 @@ public final class MinionEntityService {
 
     /** 名牌基础部分：显示名（金）+ Tier 罗马数字（灰，对齐 Hypixel 名牌），spawn 与状态刷新共用。 */
     private Component baseName(Minion minion) {
+        var typeConfig = config.get().type(minion.type());
+        String displayName = typeConfig == null ? minion.type().displayName() : typeConfig.displayName();
         return Component.text()
-                .append(Component.text(config.get().type(minion.type()).displayName(), NamedTextColor.GOLD))
+                .append(Component.text(displayName, NamedTextColor.GOLD))
                 .append(Component.text(" " + Roman.of(minion.level()), NamedTextColor.GRAY))
                 .build();
     }

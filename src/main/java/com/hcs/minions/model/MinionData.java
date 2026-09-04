@@ -28,6 +28,8 @@ public record MinionData(
         String islandId,
         String upgrade1,
         String upgrade2,
+        String upgrade3,
+        String upgrade4,
         String skin,
         boolean autoSell,
         long totalProduced,

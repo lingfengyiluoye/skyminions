@@ -41,6 +41,8 @@ public final class MysqlMinionStore implements MinionStore {
               island_id VARCHAR(36),
               upgrade1 VARCHAR(32),
               upgrade2 VARCHAR(32),
+              upgrade3 VARCHAR(32),
+              upgrade4 VARCHAR(32),
               skin VARCHAR(32),
               auto_sell TINYINT NOT NULL DEFAULT 0,
               total_produced BIGINT NOT NULL DEFAULT 0,
@@ -50,8 +52,8 @@ public final class MysqlMinionStore implements MinionStore {
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, skin, auto_sell, total_produced, permanent_boost, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, upgrade3, upgrade4, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE
               owner=VALUES(owner), type=VALUES(type), level=VALUES(level), xp=VALUES(xp),
               world=VALUES(world), x=VALUES(x), y=VALUES(y), z=VALUES(z),
@@ -59,6 +61,7 @@ public final class MysqlMinionStore implements MinionStore {
               mult_boost=VALUES(mult_boost), mult_ticks=VALUES(mult_ticks),
               last_active=VALUES(last_active),
               island_id=VALUES(island_id), upgrade1=VALUES(upgrade1), upgrade2=VALUES(upgrade2),
+              upgrade3=VALUES(upgrade3), upgrade4=VALUES(upgrade4),
               skin=VALUES(skin), auto_sell=VALUES(auto_sell), total_produced=VALUES(total_produced),
               permanent_boost=VALUES(permanent_boost), inventory=VALUES(inventory)
             """;
@@ -119,6 +122,8 @@ public final class MysqlMinionStore implements MinionStore {
         try (Statement st = c.createStatement()) {
             addColumnIfMissing(st, existing, "upgrade1", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "upgrade2", "VARCHAR(32)", null);
+            addColumnIfMissing(st, existing, "upgrade3", "VARCHAR(32)", null);
+            addColumnIfMissing(st, existing, "upgrade4", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "skin", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "fuel_boost", "DOUBLE NOT NULL", "1.0");
         addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
@@ -279,6 +284,8 @@ public final class MysqlMinionStore implements MinionStore {
         ps.setString(i++, d.islandId());
         ps.setString(i++, d.upgrade1());
         ps.setString(i++, d.upgrade2());
+        ps.setString(i++, d.upgrade3());
+        ps.setString(i++, d.upgrade4());
         ps.setString(i++, d.skin());
         ps.setBoolean(i++, d.autoSell());
         ps.setLong(i++, d.totalProduced());
@@ -302,6 +309,8 @@ public final class MysqlMinionStore implements MinionStore {
                 rs.getString("island_id"),
                 rs.getString("upgrade1"),
                 rs.getString("upgrade2"),
+                rs.getString("upgrade3"),
+                rs.getString("upgrade4"),
                 rs.getString("skin"),
                 rs.getBoolean("auto_sell"),
                 rs.getLong("total_produced"),

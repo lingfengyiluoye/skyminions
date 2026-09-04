@@ -32,11 +32,26 @@ import java.util.UUID;
  */
 public final class FuelGui {
 
-    /** 燃料选择界面容器：携带所属仆从 id。 */
-    public record FuelHolder(UUID minionId) implements InventoryHolder {
+    /** 燃料选择界面容器：携带所属仆从 id，创建后回填真实 {@link Inventory} 满足契约。 */
+    public static final class FuelHolder implements InventoryHolder {
+        private final UUID minionId;
+        private Inventory inventory;
+
+        public FuelHolder(UUID minionId) {
+            this.minionId = minionId;
+        }
+
+        public UUID minionId() {
+            return minionId;
+        }
+
+        void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
         @Override
         public @NotNull Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 
@@ -60,6 +75,9 @@ public final class FuelGui {
     public static void open(Player player, Minion minion) {
         Inventory inv = Bukkit.createInventory(new FuelHolder(minion.id()), 27,
                 GuiText.title("fuel-gui.title"));
+        if (inv.getHolder() instanceof FuelHolder holder) {
+            holder.attach(inv);
+        }
 
         Map<Material, Integer> owned = scanInventory(player);
         int[] optionSlots = optionSlots();

@@ -21,6 +21,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,10 +30,10 @@ import java.util.UUID;
 
 /**
  * 升级合成 GUI（对齐 Hypixel 原版玩法）：打开仆从升级界面，把「上一级本体 + 升级材料」
- * 放入 3×3 合成格，点击右侧产物即合成下一 Tier（原地升级已放置的仆从）。
+ * 放入 4×4 合成格，点击右侧产物即合成下一 Tier（原地升级已放置的仆从）。
  *
  * <pre>
- * 54 格：11-13/20-22/29-31 = 3×3 合成格（自由取放，材料从玩家背包装入）
+ * 54 格：10-13/19-22/28-31/37-40 = 4×4 合成格（自由取放，材料从玩家背包装入）
  *        23 箭头（装饰） | 24 结果槽（材料齐时显示下一级仆从物品，点击合成）
  *        4 配方信息卡（需求/已放对比） | 49 返回 | 其余为装饰玻璃
  * 交互：潜行点击信息卡可从背包一键填充配方材料。
@@ -41,11 +42,26 @@ import java.util.UUID;
  */
 public final class UpgradeCraftGui {
 
-    /** 合成界面容器：携带所属仆从 id。 */
-    public record CraftHolder(UUID minionId) implements InventoryHolder {
+    /** 合成界面容器：携带所属仆从 id，创建后回填真实 {@link Inventory} 满足契约。 */
+    public static final class CraftHolder implements InventoryHolder {
+        private final UUID minionId;
+        private Inventory inventory;
+
+        public CraftHolder(UUID minionId) {
+            this.minionId = minionId;
+        }
+
+        public UUID minionId() {
+            return minionId;
+        }
+
+        void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
         @Override
         public @NotNull Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 
@@ -93,6 +109,9 @@ public final class UpgradeCraftGui {
                 "tier", Roman.of(minion.level()));
         Inventory inv = Bukkit.createInventory(new CraftHolder(minion.id()), 54,
                 GuiText.title("craft-gui.title", v));
+        if (inv.getHolder() instanceof CraftHolder holder) {
+            holder.attach(inv); // 回填真实 Inventory，满足 InventoryHolder 契约
+        }
         ItemStack decor = named(GuiLayout.material("craft.decor.material"), Component.empty());
         for (int slot : GuiLayout.slots("craft.decor.slots")) {
             inv.setItem(slot, decor);
@@ -174,7 +193,7 @@ public final class UpgradeCraftGui {
                 && items.parseLevel(item) == minion.level();
     }
 
-    /** 一键填充：从玩家背包装入配方材料（与本体），先归还格内已有物品再填入。 */
+    /** 一键填充：从玩家背包聚合装入配方材料（与本体），先归还格内已有物品再填入。 */
     public static void fillFromInventory(Inventory inv, Player player, Minion minion,
                                          MinionItemService items, MinionTypeConfig cfg, ConfigProvider config) {
         Map<ItemRef, Long> recipe = cfg.recipeFor(minion.level());
@@ -193,21 +212,47 @@ public final class UpgradeCraftGui {
         for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
             long need = e.getValue();
             ItemStack[] contents = player.getInventory().getStorageContents();
-            for (int i = 0; i < contents.length && need > 0 && cursor < grid.length; i++) {
-                if (!e.getKey().matches(contents[i])) {
+            // 聚合装箱：同种素装材料合并成整叠再占格（WHEAT×512 只占 8 格而非逐堆逐格），
+            // 带 meta 的物品（附魔资源/自定义物品）不可合并，保留原堆单独占格
+            long pending = 0;
+            List<ItemStack> metaStacks = new ArrayList<>();
+            Material plainMaterial = null;
+            for (int i = 0; i < contents.length && need > 0; i++) {
+                ItemStack cur = contents[i];
+                if (cur == null || !e.getKey().matches(cur)) {
                     continue;
                 }
-                int take = (int) Math.min(contents[i].getAmount(), need);
-                ItemStack part = contents[i].clone();
-                part.setAmount(take);
-                contents[i].setAmount(contents[i].getAmount() - take);
-                if (contents[i].getAmount() <= 0) {
+                int take = (int) Math.min(cur.getAmount(), need);
+                if (isMergeablePlain(cur)) {
+                    pending += take;
+                    plainMaterial = cur.getType();
+                } else {
+                    ItemStack part = cur.clone();
+                    part.setAmount(take);
+                    metaStacks.add(part);
+                }
+                cur.setAmount(cur.getAmount() - take);
+                if (cur.getAmount() <= 0) {
                     contents[i] = null;
                 }
-                inv.setItem(grid[cursor++], part);
                 need -= take;
             }
             player.getInventory().setStorageContents(contents);
+            if (pending > 0 && plainMaterial != null) {
+                int maxStack = plainMaterial.getMaxStackSize();
+                while (pending > 0 && cursor < grid.length) {
+                    int put = (int) Math.min(pending, maxStack);
+                    inv.setItem(grid[cursor++], new ItemStack(plainMaterial, put));
+                    pending -= put;
+                }
+            }
+            for (ItemStack part : metaStacks) {
+                if (cursor >= grid.length) {
+                    giveOrDrop(player, part); // 格位不够：装不下的退回背包，不吞材料
+                    continue;
+                }
+                inv.setItem(grid[cursor++], part);
+            }
         }
         if (needBody) {
             ItemStack[] contents = player.getInventory().getStorageContents();
@@ -225,6 +270,11 @@ public final class UpgradeCraftGui {
                 }
             }
         }
+    }
+
+    /** 是否可聚合装箱：无任何 meta 的素装原版物品才允许合并重建（附魔资源 PDC/自定义物品 NBT 必须原样保留）。 */
+    private static boolean isMergeablePlain(ItemStack item) {
+        return !item.hasItemMeta();
     }
 
     /** 合成成功后清空合成格（材料已消耗）。 */

@@ -58,6 +58,7 @@ public final class MinionsPlugin extends JavaPlugin {
     public void onEnable() {
         Messages.load(this);
         GuiText.load(this);
+        com.hcs.minions.util.EnchantedResource.init(this); // 附魔资源身份键（Hypixel 式浓缩材料）
 
         PluginConfig config = ConfigLoader.load(this);
         ConfigProvider configProvider = new ConfigProvider(this, config);
@@ -123,6 +124,7 @@ public final class MinionsPlugin extends JavaPlugin {
                 new UpgradeCraftGuiListener(this, manager, itemService, configProvider, skyblock), this);
         getServer().getPluginManager().registerEvents(new RecipePreviewListener(), this);
         getServer().getPluginManager().registerEvents(new GuideListListener(), this);
+        getServer().getPluginManager().registerEvents(new com.hcs.minions.gui.UpgradeMaterialsListener(), this);
         getServer().getPluginManager().registerEvents(new SlayerDeathListener(), this);
 
         getServer().getCommandMap().register("skyminions", new MinionCommand(itemService, manager, upgrades, configProvider, this));
@@ -130,7 +132,7 @@ public final class MinionsPlugin extends JavaPlugin {
 
         // 离线收益结算：主人上线时按三道平衡锁补发闲置窗产出
         getServer().getPluginManager().registerEvents(
-                new OfflineSettlement(this, configProvider, manager, strategies::get, collection), this);
+                new OfflineSettlement(this, configProvider, manager, strategies::get, collection, upgrades), this);
 
         // Collection 定期落盘（60 秒）
         async.scheduleAtFixedRate(collection::save, 60, 60, java.util.concurrent.TimeUnit.SECONDS);

@@ -48,11 +48,38 @@ import java.util.UUID;
  */
 public final class CollectionGui {
 
-    /** 图鉴 GUI 状态容器：翻页/过滤通过重建界面实现（holder 不可变，天然线程安全）。 */
-    public record CollectionHolder(UUID playerId, MinionCategory filter, int page) implements InventoryHolder {
+    /** 图鉴 GUI 状态容器：翻页/过滤通过重建界面实现；创建后回填真实 {@link Inventory} 满足契约。 */
+    public static final class CollectionHolder implements InventoryHolder {
+        private final UUID playerId;
+        private final MinionCategory filter;
+        private final int page;
+        private Inventory inventory;
+
+        public CollectionHolder(UUID playerId, MinionCategory filter, int page) {
+            this.playerId = playerId;
+            this.filter = filter;
+            this.page = page;
+        }
+
+        public UUID playerId() {
+            return playerId;
+        }
+
+        public MinionCategory filter() {
+            return filter;
+        }
+
+        public int page() {
+            return page;
+        }
+
+        void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
         @Override
         public @NotNull Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 
@@ -90,6 +117,9 @@ public final class CollectionGui {
         Inventory inv = Bukkit.createInventory(
                 new CollectionHolder(player.getUniqueId(), filter, Math.max(0, page)), 54,
                 GuiText.title("collection-gui.title"));
+        if (inv.getHolder() instanceof CollectionHolder holder) {
+            holder.attach(inv);
+        }
 
         List<MinionType> types = visibleTypes(filter);
         int pageSize = Math.max(1, cardSlots().length);

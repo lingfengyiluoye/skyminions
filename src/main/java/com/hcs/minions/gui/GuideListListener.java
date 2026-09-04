@@ -8,6 +8,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 
+import java.util.List;
+
 /**
  * 材料指南清单页交互：
  *
@@ -47,17 +49,29 @@ public final class GuideListListener implements Listener {
             return;
         }
         ItemRef ref = holder.entries().get(idx).getKey();
+        // 附魔资源：打开专属压缩预览（N 个基础物品 → 1 个附魔资源，可当场手动压缩）
+        if (ref instanceof ItemRef.EnchantedRef er) {
+            player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+            player.closeInventory();
+            com.hcs.minions.gui.UpgradeMaterialsGui.openDetail(player, er.resource());
+            return;
+        }
         Material mat = ref.guideMaterial();
-        // 不可合成的材料点不开：没有对应预览形状
+        // 不可合成的原版材料点不开：没有对应预览形状
         if (com.hcs.minions.util.MaterialGuide.gridOf(mat).isEmpty()) {
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.4f, 0.8f);
             return;
         }
+        // 预览页循环列表只收非附魔材质，下标由 holder 预算的映射给出（不可用条目下标）
+        int previewIndex = holder.previewIndexOf(idx);
+        List<Material> previewMaterials = holder.previewMaterials();
+        if (previewIndex < 0 || previewIndex >= previewMaterials.size()) {
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.4f, 0.8f);
+            return;
+        }
         player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
-        Material target = holder.allMaterials().get(idx);
-        int previewIndex = Math.max(0, holder.allMaterials().indexOf(target));
         player.closeInventory();
-        RecipePreviewGui.open(player, holder.allMaterials(), previewIndex);
+        RecipePreviewGui.open(player, previewMaterials, previewIndex);
     }
 
     @EventHandler

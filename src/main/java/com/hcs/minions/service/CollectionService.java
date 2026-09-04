@@ -5,6 +5,7 @@ import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
+import com.hcs.minions.util.PlayerTasks;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -153,16 +154,16 @@ public final class CollectionService {
 
     /** 发放第 from..to 个里程碑奖励（金币 + 槽位加成提示）。 */
     private void award(UUID owner, Material material, int from, int to) {
-        Player online = Bukkit.getPlayer(owner);
         for (int n = from; n <= to; n++) {
             long coins = cfg().coinsBase() * n;
             if (economy != null && economy.isEnabled() && coins > 0) {
                 economy.depositCents(owner, coins * 100);
             }
-            if (online != null) {
-                online.sendMessage(Messages.milestoneReached(
-                        MaterialNames.of(material), cfg().thresholdOf(n), coins, cfg().slotMilestones().contains(n)));
-            }
+            int milestone = n;
+            PlayerTasks.run(plugin, owner, online ->
+                    online.sendMessage(Messages.milestoneReached(
+                            MaterialNames.of(material), cfg().thresholdOf(milestone), coins,
+                            cfg().slotMilestones().contains(milestone))));
             Logs.info("Collection 里程碑: player={}, resource={}, milestone={}/{}",
                     owner, material.name(), n, cfg().milestones().length);
         }

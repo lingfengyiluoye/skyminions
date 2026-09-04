@@ -80,14 +80,6 @@ public final class MinionGUIListener implements Listener {
             openCraft(player, minion);
             return;
         }
-        if (slot == Minion.autosellSlot()) {
-            event.setCancelled(true);
-            minion.setAutoSell(!minion.autoSell());
-            minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
-            manager.save(minion); // 立即登记落库，不依赖 onClose 兜底
-            Fx.ok(player, Messages.autoSellToggled(minion.autoSell()));
-            return;
-        }
         if (slot == Minion.pickupSlot()) {
             event.setCancelled(true);
             pickup(player, minion);
@@ -103,7 +95,8 @@ public final class MinionGUIListener implements Listener {
             player.closeInventory();
             return;
         }
-        if (slot == Minion.module1Slot() || slot == Minion.module2Slot()) {
+        if (slot == Minion.module1Slot() || slot == Minion.module2Slot()
+                || slot == Minion.module3Slot() || slot == Minion.module4Slot()) {
             event.setCancelled(true);
             handleUpgradeSlot(event, player, minion, slot);
             return;
@@ -111,11 +104,6 @@ public final class MinionGUIListener implements Listener {
         if (slot == Minion.skinSlot()) {
             event.setCancelled(true);
             cycleSkin(player, minion);
-            return;
-        }
-        if (slot == Minion.layoutSlot()) {
-            event.setCancelled(true);
-            showLayout(player, minion);
             return;
         }
         if (slot == Minion.infoSlot() || slot == Minion.headSlot()) {
@@ -276,9 +264,18 @@ public final class MinionGUIListener implements Listener {
         return seconds + " 秒";
     }
 
-    /** 模块槽交互：手持模块点击装备，空手点击已装备槽卸下（Hypixel 原版）。 */
+    /** 模块槽交互：手持模块点击装备，空手点击已装备槽卸下（Hypixel 原版，4 槽）。 */
     private void handleUpgradeSlot(InventoryClickEvent event, Player player, Minion minion, int slot) {
-        int slotNum = (slot == Minion.module2Slot()) ? 2 : 1;
+        int slotNum;
+        if (slot == Minion.module4Slot()) {
+            slotNum = 4;
+        } else if (slot == Minion.module3Slot()) {
+            slotNum = 3;
+        } else if (slot == Minion.module2Slot()) {
+            slotNum = 2;
+        } else {
+            slotNum = 1;
+        }
         if (minion.unlockedUpgradeSlots() < slotNum) {
             player.sendMessage(Messages.UPGRADE_SLOT_LOCKED);
             return;
@@ -288,16 +285,16 @@ public final class MinionGUIListener implements Listener {
 
         if (held.isPresent()) {
             MinionUpgradeType type = held.get();
-            boolean occupied = slotNum == 1 ? (minion.upgrade1() != null) : (minion.upgrade2() != null);
-            if (occupied) {
+            if (minion.upgradeAt(slotNum) != null) {
                 player.sendMessage(Messages.UPGRADE_SLOT_OCCUPIED);
                 return;
             }
-            if (slotNum == 1) {
-                minion.setUpgrade1(type);
-            } else {
-                minion.setUpgrade2(type);
+            // 防止同一模块占用多个槽（重复装同类型无意义，且储物箱叠加会翻倍容量）
+            if (minion.hasUpgrade(type)) {
+                player.sendMessage(Messages.upgradeDuplicate(type.displayName()));
+                return;
             }
+            minion.setUpgradeAt(slotNum, type);
             cursor.setAmount(cursor.getAmount() - 1);
             if (cursor.getAmount() <= 0) {
                 event.setCursor(null);
@@ -311,6 +308,10 @@ public final class MinionGUIListener implements Listener {
         MinionUpgradeType removed = minion.removeUpgradeSlot(slotNum);
         if (removed != null) {
             giveOrDrop(player, upgrades.createItem(removed));
+            // 卸下储物箱模块会缩减存储容量：把被重新锁定格里的残留物品交还玩家，防止 refresh 覆盖吞物
+            for (ItemStack overflow : minion.evictOverflowAfterRemoving(removed)) {
+                giveOrDrop(player, overflow);
+            }
             minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
             manager.save(minion); // 卸下模块立即登记落库
             player.sendMessage(Messages.upgradeRemoved(removed.displayName()));
@@ -329,31 +330,6 @@ public final class MinionGUIListener implements Listener {
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         Fx.ok(player, Messages.skinChanged(minion.skin().displayName()));
-    }
-
-    /** 理想布局：圆石/农夫为可执行开关（自动摆方块，见各自策略）；其余类型展示布局指引。 */
-    private void showLayout(Player player, Minion minion) {
-        MinionTypeConfig cfg = config.get().type(minion.type());
-        var behavior = minion.type().behavior();
-        if (behavior == com.hcs.minions.model.MinionBehavior.GENERATOR
-                || behavior == com.hcs.minions.model.MinionBehavior.FARMING) {
-            boolean on = !minion.idealLayout();
-            if (!on) {
-                minion.cleanupLayoutBlocks(); // 关闭时还原摆放的水/岩浆/耕地作物
-            }
-            minion.setIdealLayout(on);
-            minion.refresh(cfg, config.get().upgradeRequirePreviousBody());
-            manager.save(minion);
-            player.sendMessage(on ? Messages.layoutEnabled() : Messages.layoutDisabled());
-            return;
-        }
-        int r = cfg.radiusFor(minion.level());
-        int side = 2 * r + 1;
-        player.sendMessage(Messages.LAYOUT_HEADER);
-        player.sendMessage(Messages.layoutRange(side));
-        player.sendMessage(Messages.LAYOUT_TIP_CENTER);
-        player.sendMessage(Messages.LAYOUT_TIP_LIGHT);
-        player.sendMessage(Messages.LAYOUT_TIP_SHARED);
     }
 
     /** 打开 Hypixel 式合成升级界面：3×3 合成格放入上一级本体 + 材料合成下一 Tier。 */
@@ -390,7 +366,6 @@ public final class MinionGUIListener implements Listener {
             return;
         }
         player.closeInventory();
-        minion.cleanupLayoutBlocks(); // 拾取时还原理想布局摆放的水/岩浆
         manager.remove(minion, player);
         giveOrDrop(player, spawner);
     }

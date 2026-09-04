@@ -131,56 +131,19 @@ public final class MinionCommand extends Command {
     }
 
     /**
-     * /minion materials <类型> [等级]：输出该级升级材料的获取指引
-     * （合成配方 / 原版名称 / 其他来源）。控制台与玩家均可执行。
+     * /minion materials：打开升级材料总览 GUI，展示所有附魔资源及其合成方式。
+     * 仅玩家可执行（需要打开 GUI）。
      */
     private void materials(CommandSender sender, String[] args) {
-        if (args.length < 2) {
-            sender.sendMessage(Messages.USAGE_MATERIALS);
-            return;
-        }
-        MinionType type = MinionType.fromKey(args[1]).orElse(null);
-        if (type == null) {
-            sender.sendMessage(Messages.unknownType(args[1]));
-            return;
-        }
-        var cfg = config.get().type(type);
-        if (cfg == null) {
-            sender.sendMessage(Messages.unknownType(args[1]));
-            return;
-        }
-        int level = 1;
-        if (args.length >= 3) {
-            try {
-                level = Math.max(1, Integer.parseInt(args[2]));
-            } catch (NumberFormatException e) {
-                sender.sendMessage(Messages.LEVEL_MUST_BE_NUMBER);
-                return;
-            }
-        }
-        if (level >= cfg.maxLevel()) {
-            sender.sendMessage(Messages.MAX_LEVEL);
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Messages.PLAYER_ONLY);
             return;
         }
         try {
-            sender.sendMessage(Messages.materialsHeader(cfg.displayName(),
-                    com.hcs.minions.util.Roman.of(level), com.hcs.minions.util.Roman.of(level + 1)));
-            if (cfg.overrideLevels().contains(level)) {
-                sender.sendMessage(Messages.materialsOverrideNote());
-            }
-            for (var e : cfg.recipeFor(level).entrySet()) {
-                Material mat = e.getKey().guideMaterial();
-                sender.sendMessage(Messages.materialsEntry(e.getKey().displayName(), e.getValue()));
-                for (var line : com.hcs.minions.util.MaterialGuide.chatLines(mat)) {
-                    sender.sendMessage(line);
-                }
-            }
-            sender.sendMessage(Messages.materialsBaseNote());
-            sender.sendMessage(Messages.materialsHint());
+            com.hcs.minions.gui.UpgradeMaterialsGui.openOverview(player);
         } catch (Throwable t) {
-            // 兜底：指南生成失败只影响本条命令，绝不允许异常上抛带崩服务器
-            Logs.error("材料指南生成失败: type=" + type.key() + ", level=" + level, t);
-            sender.sendMessage("§c材料指引生成失败，详情见控制台日志");
+            Logs.error("升级材料总览打开失败", t);
+            player.sendMessage("§c材料总览打开失败，详情见控制台日志");
         }
     }
 

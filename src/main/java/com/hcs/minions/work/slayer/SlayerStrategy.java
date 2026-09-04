@@ -67,14 +67,19 @@ public final class SlayerStrategy implements MinionWorkStrategy {
     public WorkOutcome performWork(WorkContext ctx) {
         Entity victim = findHostile(ctx);
         if (victim instanceof LivingEntity living) {
-            // 真实击杀：用 damage() 触发 EntityDeathEvent（任务/统计类插件可联动）；
-            // 掉落由下方模拟 loot 表给出，标记后由监听器清掉自然掉落避免双份
-            SlayerKills.mark(living);
-            living.damage(9999.0);
-            if (!living.isDead() && living.isValid()) {
-                SlayerKills.unmark(living); // 伤害未致死（如抗性/无敌），撤销标记
-            }
+            // 真实击杀：先算好本次要给的掉落（模拟 loot 表），再决定是否触发原版死亡。
+            // 关键——只有"这一击确实能致死"时才 mark：用当前血量预判，而不是打完再回看
+            // living.isDead()（damage() 会同步派发 EntityDeathEvent，标记晚于监听器就漏清掉落）。
             List<ItemStack> drops = lootOf(victim, ctx.random());
+            boolean lethal = living.getHealth() <= 9999.0;
+            if (lethal) {
+                SlayerKills.mark(living);
+            }
+            living.damage(9999.0);
+            // 理论致死却因抗性/无敌/其他插件拦截而没死：撤销标记，避免后续他人击杀被误吞掉落
+            if (lethal && !living.isDead() && living.isValid()) {
+                SlayerKills.unmark(living);
+            }
             long xp = Math.max(1, drops.stream().mapToLong(ItemStack::getAmount).sum());
             return new WorkOutcome(true, xp, drops);
         }

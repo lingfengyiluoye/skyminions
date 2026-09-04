@@ -100,10 +100,10 @@ public final class UpgradeCraftGuiListener implements Listener {
         try {
             com.hcs.minions.config.MinionTypeConfig cfg = config.get().type(minion.type());
             var recipe = cfg.recipeFor(minion.level());
-            // 已有数量（按材质聚合，供清单页展示）
-            java.util.Map<Material, Long> owned = new java.util.LinkedHashMap<>();
+            // 已有数量（按 ItemRef 统计，附魔资源与同材质原版材料分开计）
+            java.util.Map<com.hcs.minions.util.ItemRef, Long> owned = new java.util.LinkedHashMap<>();
             for (var ref : recipe.keySet()) {
-                owned.put(ref.guideMaterial(), minion.countInStorage(ref));
+                owned.put(ref, minion.countInStorage(ref));
             }
             GuideListGui.open(player, cfg.displayName(),
                     com.hcs.minions.util.Roman.of(minion.level()),

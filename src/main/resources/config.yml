@@ -94,11 +94,19 @@ collections:
 #   targets    可采集方块（1 级起）；FORAGING 填单一原木=纯林经营，砍伐后自动补种对应树苗
 #   product    代表性产物（收集解锁计数 + 离线结算产物）
 #   upgrade-recipe           基础配方（随 upgrade-cost-growth 逐级陡增）
-#   upgrade-recipe-at.'12'   终阶覆盖行：整行替代该级配方（精块大额 + 稀有掉落回流）
+#   upgrade-recipe-at.'12'   终阶覆盖行：整行替代该级配方（附魔资源大额 + 稀有掉落回流）
 #   rare-drop / rare-drop-chance  专属稀有掉落（Hypixel 兴奋点）
 #   unlock-amount    收集解锁阈值（product 计数）
 #   cooldown-ticks   逐级动作间隔表（对齐 Hypixel 曲线）
-# 二阶"精块"命名对照（语境化别名，见 MaterialNames）：
+# 配方材料写法（三种，见 ItemRef）：
+#   1) 原版物品：COAL: 48（大写 Material 名）
+#   2) 附魔资源：'enchanted:coal': 4（Hypixel 式浓缩材料，160 个基础物品=1 个，
+#      带附魔光效+中文名；由「超级压缩 3000」模块产出，形成产出即升级材料的闭环）
+#      内置 key：coal/iron/gold/redstone/lapis/quartz/copper/cobblestone/wheat/carrot/
+#      potato/string/bone/gunpowder/slimeball/ice/sand/clay/rotten_flesh/ender_pearl/
+#      blaze_rod/diamond/emerald/oak_log/leather/pork/beef/mutton/chicken
+#   3) CraftEngine 自定义物品：'craftengine:my_item': 8（键含冒号，装了 CraftEngine 才生效）
+# 二阶方块命名对照（语境化别名，见 MaterialNames）：
 #   COAL_BLOCK煤炭精块 RAW_IRON_BLOCK粗铁精块 RAW_COPPER_BLOCK粗铜精块 RAW_GOLD_BLOCK金矿精块
 #   REDSTONE_BLOCK红石精块 LAPIS_BLOCK青金精块 DIAMOND_BLOCK钻石精块 EMERALD_BLOCK绿宝精块
 #   QUARTZ_BLOCK石英精块 CRYING_OBSIDIAN泣晶黑曜 HAY_BLOCK麦穗精块 BAMBOO_BLOCK草木精块
@@ -117,14 +125,14 @@ types:
     upgrade-recipe:
       COAL: 48
       COBBLESTONE: 32
-      COAL_BLOCK: 2
+      'enchanted:coal': 2
     rare-drop: EMERALD
     rare-drop-chance: 0.003
     unlock-amount: 100
     upgrade-recipe-at:
+      # 终阶（Tier 11→12）：附魔煤炭大额 + 稀有掉落回流（对齐 Hypixel 高 Tier 用附魔资源）
       '12':
-        COAL: 384
-        COAL_BLOCK: 64
+        'enchanted:coal': 6
         EMERALD: 16
 
   铁矿仆从:
@@ -138,14 +146,13 @@ types:
     upgrade-recipe:
       RAW_IRON: 40
       STONE: 32
-      RAW_IRON_BLOCK: 2
+      'enchanted:iron': 2
     rare-drop: ANVIL
     rare-drop-chance: 0.002
     unlock-amount: 120
     upgrade-recipe-at:
       '12':
-        RAW_IRON: 320
-        RAW_IRON_BLOCK: 64
+        'enchanted:iron': 6
         ANVIL: 8
 
   铜矿仆从:
@@ -159,14 +166,14 @@ types:
     upgrade-recipe:
       RAW_COPPER: 40
       STONE: 32
-      RAW_COPPER_BLOCK: 2
+      'enchanted:copper': 2
     rare-drop: SPYGLASS
     rare-drop-chance: 0.004
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         RAW_COPPER: 320
-        RAW_COPPER_BLOCK: 64
+        'enchanted:copper': 6
         SPYGLASS: 4
 
   金矿仆从:
@@ -180,14 +187,14 @@ types:
     upgrade-recipe:
       RAW_GOLD: 36
       NETHERRACK: 32
-      RAW_GOLD_BLOCK: 2
+      'enchanted:gold': 2
     rare-drop: GOLDEN_APPLE
     rare-drop-chance: 0.003
     unlock-amount: 130
     upgrade-recipe-at:
       '12':
         RAW_GOLD: 288
-        RAW_GOLD_BLOCK: 64
+        'enchanted:gold': 6
         GOLDEN_APPLE: 12
 
   红石仆从:
@@ -201,14 +208,14 @@ types:
     upgrade-recipe:
       REDSTONE: 44
       STONE: 32
-      REDSTONE_BLOCK: 2
+      'enchanted:redstone': 2
     rare-drop: TNT
     rare-drop-chance: 0.005
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         REDSTONE: 352
-        REDSTONE_BLOCK: 56
+        'enchanted:redstone': 6
         TNT: 24
 
   青金石仆从:
@@ -222,14 +229,14 @@ types:
     upgrade-recipe:
       LAPIS_LAZULI: 40
       STONE: 32
-      LAPIS_BLOCK: 2
+      'enchanted:lapis': 2
     rare-drop: EXPERIENCE_BOTTLE
     rare-drop-chance: 0.01
     unlock-amount: 90
     upgrade-recipe-at:
       '12':
         LAPIS_LAZULI: 320
-        LAPIS_BLOCK: 56
+        'enchanted:lapis': 6
         EXPERIENCE_BOTTLE: 48
 
   钻石仆从:
@@ -243,14 +250,14 @@ types:
     upgrade-recipe:
       DIAMOND: 24
       STONE: 32
-      DIAMOND_BLOCK: 1
+      'enchanted:diamond': 1
     rare-drop: ECHO_SHARD
     rare-drop-chance: 0.003
     unlock-amount: 150
     upgrade-recipe-at:
       '12':
         DIAMOND: 192
-        DIAMOND_BLOCK: 48
+        'enchanted:diamond': 5
         ECHO_SHARD: 12
 
   绿宝石仆从:
@@ -264,14 +271,14 @@ types:
     upgrade-recipe:
       EMERALD: 20
       STONE: 32
-      EMERALD_BLOCK: 1
+      'enchanted:emerald': 1
     rare-drop: TOTEM_OF_UNDYING
     rare-drop-chance: 0.001
     unlock-amount: 160
     upgrade-recipe-at:
       '12':
         EMERALD: 160
-        EMERALD_BLOCK: 40
+        'enchanted:emerald': 4
         TOTEM_OF_UNDYING: 4
 
   石英仆从:
@@ -285,14 +292,14 @@ types:
     upgrade-recipe:
       QUARTZ: 40
       NETHERRACK: 32
-      QUARTZ_BLOCK: 2
+      'enchanted:quartz': 2
     rare-drop: GHAST_TEAR
     rare-drop-chance: 0.004
     unlock-amount: 120
     upgrade-recipe-at:
       '12':
         QUARTZ: 320
-        QUARTZ_BLOCK: 56
+        'enchanted:quartz': 6
         GHAST_TEAR: 16
 
   黑曜石仆从:
@@ -306,14 +313,14 @@ types:
     upgrade-recipe:
       OBSIDIAN: 16
       STONE: 32
-      CRYING_OBSIDIAN: 2
+      'enchanted:obsidian': 2
     rare-drop: ENCHANTED_GOLDEN_APPLE
     rare-drop-chance: 0.002
     unlock-amount: 180
     upgrade-recipe-at:
       '12':
         OBSIDIAN: 128
-        CRYING_OBSIDIAN: 32
+        'enchanted:obsidian': 4
         ENCHANTED_GOLDEN_APPLE: 4
 
   # ===================== 农业 FARMING（8） =====================
@@ -328,14 +335,14 @@ types:
     upgrade-recipe:
       WHEAT: 64
       CARROT: 32
-      HAY_BLOCK: 2
+      'enchanted:wheat': 2
     rare-drop: GOLDEN_CARROT
     rare-drop-chance: 0.005
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         WHEAT: 512
-        HAY_BLOCK: 64
+        'enchanted:wheat': 6
         GOLDEN_CARROT: 32
 
   胡萝卜仆从:
@@ -349,14 +356,14 @@ types:
     upgrade-recipe:
       CARROT: 64
       WHEAT: 24
-      HAY_BLOCK: 2
+      'enchanted:carrot': 2
     rare-drop: NAME_TAG
     rare-drop-chance: 0.004
     unlock-amount: 90
     upgrade-recipe-at:
       '12':
         CARROT: 512
-        HAY_BLOCK: 64
+        'enchanted:carrot': 6
         NAME_TAG: 8
 
   马铃薯仆从:
@@ -370,14 +377,14 @@ types:
     upgrade-recipe:
       POTATO: 64
       WHEAT: 24
-      HAY_BLOCK: 2
+      'enchanted:potato': 2
     rare-drop: GLISTERING_MELON_SLICE
     rare-drop-chance: 0.004
     unlock-amount: 90
     upgrade-recipe-at:
       '12':
         POTATO: 512
-        HAY_BLOCK: 64
+        'enchanted:potato': 6
         GLISTERING_MELON_SLICE: 24
 
   南瓜仆从:
@@ -391,14 +398,14 @@ types:
     upgrade-recipe:
       PUMPKIN: 32
       WHEAT: 24
-      HAY_BLOCK: 2
+      'enchanted:pumpkin': 2
     rare-drop: GOLDEN_APPLE
     rare-drop-chance: 0.004
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         PUMPKIN: 256
-        HAY_BLOCK: 64
+        'enchanted:pumpkin': 6
         GOLDEN_APPLE: 24
 
   西瓜仆从:
@@ -412,14 +419,14 @@ types:
     upgrade-recipe:
       MELON_SLICE: 48
       WHEAT: 24
-      HAY_BLOCK: 2
+      'enchanted:melon': 2
     rare-drop: SPONGE
     rare-drop-chance: 0.004
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         MELON_SLICE: 384
-        HAY_BLOCK: 64
+        'enchanted:melon': 6
         SPONGE: 12
 
   甜菜仆从:
@@ -433,14 +440,14 @@ types:
     upgrade-recipe:
       BEETROOT: 56
       WHEAT: 24
-      HAY_BLOCK: 2
+      'enchanted:beetroot': 2
     rare-drop: SUSPICIOUS_STEW
     rare-drop-chance: 0.006
     unlock-amount: 80
     upgrade-recipe-at:
       '12':
         BEETROOT: 448
-        HAY_BLOCK: 64
+        'enchanted:beetroot': 6
         SUSPICIOUS_STEW: 24
 
   可可仆从:
@@ -454,14 +461,14 @@ types:
     upgrade-recipe:
       COCOA_BEANS: 48
       JUNGLE_LOG: 24
-      HAY_BLOCK: 2
+      'enchanted:cocoa': 2
     rare-drop: PITCHER_POD
     rare-drop-chance: 0.005
     unlock-amount: 90
     upgrade-recipe-at:
       '12':
         COCOA_BEANS: 384
-        HAY_BLOCK: 64
+        'enchanted:cocoa': 6
         PITCHER_POD: 24
 
   下界疣仆从:
@@ -475,14 +482,14 @@ types:
     upgrade-recipe:
       NETHER_WART: 40
       SOUL_SAND: 24
-      HAY_BLOCK: 2
+      'enchanted:nether_wart': 2
     rare-drop: WITHER_ROSE
     rare-drop-chance: 0.004
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         NETHER_WART: 320
-        HAY_BLOCK: 64
+        'enchanted:nether_wart': 6
         WITHER_ROSE: 16
 
   # ===================== 林业 FORAGING（8） =====================
@@ -497,14 +504,14 @@ types:
     upgrade-recipe:
       OAK_LOG: 64
       OAK_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:oak_log': 2
     rare-drop: GOLDEN_APPLE
     rare-drop-chance: 0.002
     unlock-amount: 150
     upgrade-recipe-at:
       '12':
         OAK_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:oak_log': 6
         GOLDEN_APPLE: 16
 
   白桦仆从:
@@ -518,14 +525,14 @@ types:
     upgrade-recipe:
       BIRCH_LOG: 64
       BIRCH_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:birch_log': 2
     rare-drop: PAINTING
     rare-drop-chance: 0.005
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         BIRCH_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:birch_log': 6
         PAINTING: 12
 
   云杉仆从:
@@ -539,14 +546,14 @@ types:
     upgrade-recipe:
       SPRUCE_LOG: 64
       SPRUCE_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:spruce_log': 2
     rare-drop: GOAT_HORN
     rare-drop-chance: 0.002
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         SPRUCE_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:spruce_log': 6
         GOAT_HORN: 4
 
   丛林仆从:
@@ -560,14 +567,14 @@ types:
     upgrade-recipe:
       JUNGLE_LOG: 64
       JUNGLE_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:jungle_log': 2
     rare-drop: LEATHER_HORSE_ARMOR
     rare-drop-chance: 0.004
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         JUNGLE_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:jungle_log': 6
         LEATHER_HORSE_ARMOR: 8
 
   金合欢仆从:
@@ -581,14 +588,14 @@ types:
     upgrade-recipe:
       ACACIA_LOG: 64
       ACACIA_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:acacia_log': 2
     rare-drop: HONEY_BOTTLE
     rare-drop-chance: 0.006
     unlock-amount: 95
     upgrade-recipe-at:
       '12':
         ACACIA_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:acacia_log': 6
         HONEY_BOTTLE: 32
 
   深色橡木仆从:
@@ -602,14 +609,14 @@ types:
     upgrade-recipe:
       DARK_OAK_LOG: 64
       DARK_OAK_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:dark_oak_log': 2
     rare-drop: ENCHANTED_GOLDEN_APPLE
     rare-drop-chance: 0.001
     unlock-amount: 130
     upgrade-recipe-at:
       '12':
         DARK_OAK_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:dark_oak_log': 6
         ENCHANTED_GOLDEN_APPLE: 6
 
   樱花仆从:
@@ -623,14 +630,14 @@ types:
     upgrade-recipe:
       CHERRY_LOG: 64
       CHERRY_SAPLING: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:cherry_log': 2
     rare-drop: PINK_PETALS
     rare-drop-chance: 0.01
     unlock-amount: 90
     upgrade-recipe-at:
       '12':
         CHERRY_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:cherry_log': 6
         PINK_PETALS: 64
 
   红树仆从:
@@ -644,14 +651,14 @@ types:
     upgrade-recipe:
       MANGROVE_LOG: 64
       MANGROVE_PROPAGULE: 32
-      BAMBOO_BLOCK: 2
+      'enchanted:mangrove_log': 2
     rare-drop: TROPICAL_FISH
     rare-drop-chance: 0.005
     unlock-amount: 105
     upgrade-recipe-at:
       '12':
         MANGROVE_LOG: 512
-        BAMBOO_BLOCK: 64
+        'enchanted:mangrove_log': 6
         TROPICAL_FISH: 32
 
   # ===================== 钓鱼 FISHING（1） =====================
@@ -666,14 +673,14 @@ types:
     upgrade-recipe:
       COD: 48
       SALMON: 32
-      PRISMARINE_BRICKS: 2
+      'enchanted:cod': 2
     rare-drop: NAUTILUS_SHELL
     rare-drop-chance: 0.01
     unlock-amount: 80
     upgrade-recipe-at:
       '12':
         COD: 256
-        PRISMARINE_BRICKS: 64
+        'enchanted:cod': 6
         NAUTILUS_SHELL: 24
 
   # ===================== 战斗 COMBAT（7） =====================
@@ -688,14 +695,14 @@ types:
     upgrade-recipe:
       ROTTEN_FLESH: 64
       BONE: 32
-      BONE_BLOCK: 2
+      'enchanted:rotten_flesh': 2
     rare-drop: WITHER_SKELETON_SKULL
     rare-drop-chance: 0.002
     unlock-amount: 200
     upgrade-recipe-at:
       '12':
         ROTTEN_FLESH: 512
-        BONE_BLOCK: 64
+        'enchanted:rotten_flesh': 6
         WITHER_SKELETON_SKULL: 8
 
   骷髅仆从:
@@ -709,14 +716,14 @@ types:
     upgrade-recipe:
       BONE: 64
       ARROW: 32
-      BONE_BLOCK: 2
+      'enchanted:bone': 2
     rare-drop: ENCHANTED_BOOK
     rare-drop-chance: 0.002
     unlock-amount: 130
     upgrade-recipe-at:
       '12':
         BONE: 512
-        BONE_BLOCK: 64
+        'enchanted:bone': 6
         ENCHANTED_BOOK: 8
 
   苦力怕仆从:
@@ -730,14 +737,14 @@ types:
     upgrade-recipe:
       GUNPOWDER: 56
       SAND: 32
-      BONE_BLOCK: 2
+      'enchanted:gunpowder': 2
     rare-drop: DRAGON_HEAD
     rare-drop-chance: 0.001
     unlock-amount: 140
     upgrade-recipe-at:
       '12':
         GUNPOWDER: 448
-        BONE_BLOCK: 64
+        'enchanted:gunpowder': 6
         DRAGON_HEAD: 2
 
   蜘蛛仆从:
@@ -751,14 +758,14 @@ types:
     upgrade-recipe:
       STRING: 64
       SLIME_BALL: 24
-      BONE_BLOCK: 2
+      'enchanted:string': 2
     rare-drop: FERMENTED_SPIDER_EYE
     rare-drop-chance: 0.01
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         STRING: 512
-        BONE_BLOCK: 64
+        'enchanted:string': 6
         FERMENTED_SPIDER_EYE: 32
 
   末影人仆从:
@@ -771,14 +778,14 @@ types:
     product: ENDER_PEARL
     upgrade-recipe:
       ENDER_PEARL: 24
-      BONE_BLOCK: 2
+      'enchanted:ender_pearl': 2
     rare-drop: ENDER_EYE
     rare-drop-chance: 0.008
     unlock-amount: 160
     upgrade-recipe-at:
       '12':
         ENDER_PEARL: 192
-        BONE_BLOCK: 64
+        'enchanted:ender_pearl': 6
         ENDER_EYE: 24
 
   烈焰人仆从:
@@ -792,14 +799,14 @@ types:
     upgrade-recipe:
       BLAZE_ROD: 20
       BLAZE_POWDER: 16
-      BONE_BLOCK: 2
+      'enchanted:blaze_rod': 2
     rare-drop: BREWING_STAND
     rare-drop-chance: 0.008
     unlock-amount: 150
     upgrade-recipe-at:
       '12':
         BLAZE_ROD: 160
-        BONE_BLOCK: 64
+        'enchanted:blaze_rod': 6
         BREWING_STAND: 16
 
   史莱姆仆从:
@@ -813,14 +820,14 @@ types:
     upgrade-recipe:
       SLIME_BALL: 48
       SLIME_BLOCK: 2
-      BONE_BLOCK: 2
+      'enchanted:slimeball': 2
     rare-drop: LEAD
     rare-drop-chance: 0.008
     unlock-amount: 120
     upgrade-recipe-at:
       '12':
         SLIME_BALL: 384
-        BONE_BLOCK: 64
+        'enchanted:slimeball': 6
         LEAD: 24
 
   # ===================== 畜牧 RANCHING（4） =====================
@@ -835,14 +842,14 @@ types:
     upgrade-recipe:
       BEEF: 48
       LEATHER: 24
-      HAY_BLOCK: 2
+      'enchanted:beef': 2
     rare-drop: SADDLE
     rare-drop-chance: 0.005
     unlock-amount: 150
     upgrade-recipe-at:
       '12':
         BEEF: 384
-        HAY_BLOCK: 64
+        'enchanted:beef': 6
         SADDLE: 8
 
   羊仆从:
@@ -856,14 +863,14 @@ types:
     upgrade-recipe:
       MUTTON: 48
       WHITE_WOOL: 24
-      HAY_BLOCK: 2
+      'enchanted:mutton': 2
     rare-drop: EMERALD
     rare-drop-chance: 0.004
     unlock-amount: 120
     upgrade-recipe-at:
       '12':
         MUTTON: 384
-        HAY_BLOCK: 64
+        'enchanted:mutton': 6
         EMERALD: 24
 
   鸡仆从:
@@ -877,14 +884,14 @@ types:
     upgrade-recipe:
       CHICKEN: 48
       FEATHER: 24
-      HAY_BLOCK: 2
+      'enchanted:chicken': 2
     rare-drop: PHANTOM_MEMBRANE
     rare-drop-chance: 0.006
     unlock-amount: 110
     upgrade-recipe-at:
       '12':
         CHICKEN: 384
-        HAY_BLOCK: 64
+        'enchanted:chicken': 6
         PHANTOM_MEMBRANE: 32
 
   猪仆从:
@@ -898,14 +905,14 @@ types:
     upgrade-recipe:
       PORKCHOP: 48
       CARROT: 24
-      HAY_BLOCK: 2
+      'enchanted:pork': 2
     rare-drop: CARROT_ON_A_STICK
     rare-drop-chance: 0.006
     unlock-amount: 115
     upgrade-recipe-at:
       '12':
         PORKCHOP: 384
-        HAY_BLOCK: 64
+        'enchanted:pork': 6
         CARROT_ON_A_STICK: 8
 
   兔仆从:
@@ -919,14 +926,14 @@ types:
     upgrade-recipe:
       RABBIT: 48
       RABBIT_HIDE: 24
-      HAY_BLOCK: 2
+      'enchanted:rabbit': 2
     rare-drop: RABBIT_FOOT
     rare-drop-chance: 0.006
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         RABBIT: 384
-        HAY_BLOCK: 64
+        'enchanted:rabbit': 6
         RABBIT_FOOT: 24
 
   # ===================== 生成器 GENERATOR（1） =====================
@@ -962,14 +969,14 @@ types:
     upgrade-recipe:
       SNOWBALL: 32
       ICE: 24
-      LAPIS_BLOCK: 2
+      'enchanted:ice': 2
     rare-drop: BLUE_ICE
     rare-drop-chance: 0.004
     unlock-amount: 120
     upgrade-recipe-at:
       '12':
         ICE: 320
-        PACKED_ICE: 48
+        'enchanted:ice': 5
         BLUE_ICE: 16
 
   雪人仆从:
@@ -992,7 +999,7 @@ types:
       '12':
         SNOWBALL: 512
         ICE: 64
-        PACKED_ICE: 24
+        'enchanted:snowball': 4
 
   黏土仆从:
     behavior: MINING
@@ -1006,14 +1013,14 @@ types:
     upgrade-recipe:
       CLAY_BALL: 48
       CLAY: 24
-      BAMBOO_BLOCK: 2
+      'enchanted:clay': 2
     rare-drop: BRICKS
     rare-drop-chance: 0.004
     unlock-amount: 100
     upgrade-recipe-at:
       '12':
         CLAY_BALL: 384
-        BAMBOO_BLOCK: 56
+        'enchanted:clay': 8
         BRICKS: 24
 
   沙砾仆从:
@@ -1028,14 +1035,14 @@ types:
     upgrade-recipe:
       GRAVEL: 56
       GUNPOWDER: 16
-      PRISMARINE_BRICKS: 2
+      'enchanted:gravel': 2
     rare-drop: FLINT_AND_STEEL
     rare-drop-chance: 0.003
     unlock-amount: 95
     upgrade-recipe-at:
       '12':
         GRAVEL: 448
-        PRISMARINE_BRICKS: 56
+        'enchanted:gravel': 6
         FLINT_AND_STEEL: 8
 
   沙漠仆从:
@@ -1050,14 +1057,14 @@ types:
     upgrade-recipe:
       SAND: 72
       DEAD_BUSH: 16
-      BAMBOO_BLOCK: 2
+      'enchanted:sand': 2
     rare-drop: ARMADILLO_SCUTE
     rare-drop-chance: 0.004
     unlock-amount: 85
     upgrade-recipe-at:
       '12':
         SAND: 576
-        BAMBOO_BLOCK: 64
+        'enchanted:sand': 6
         ARMADILLO_SCUTE: 16
 
   花卉仆从:
@@ -1073,14 +1080,14 @@ types:
     upgrade-recipe:
       POPPY: 32
       DANDELION: 32
-      BONE_BLOCK: 2
+      'enchanted:poppy': 2
     rare-drop: TORCHFLOWER_SEEDS
     rare-drop-chance: 0.005
     unlock-amount: 95
     upgrade-recipe-at:
       '12':
         POPPY: 256
-        BONE_BLOCK: 48
+        'enchanted:poppy': 5
         TORCHFLOWER_SEEDS: 12
 
   蘑菇仆从:
@@ -1096,14 +1103,14 @@ types:
     upgrade-recipe:
       RED_MUSHROOM: 32
       BROWN_MUSHROOM: 32
-      BONE_BLOCK: 2
+      'enchanted:red_mushroom': 2
     rare-drop: MYCELIUM
     rare-drop-chance: 0.005
     unlock-amount: 105
     upgrade-recipe-at:
       '12':
         RED_MUSHROOM: 256
-        BONE_BLOCK: 48
+        'enchanted:red_mushroom': 5
         MYCELIUM: 24
 
   甘蔗仆从:
@@ -1118,14 +1125,14 @@ types:
     upgrade-recipe:
       SUGAR_CANE: 64
       SUGAR: 16
-      HAY_BLOCK: 2
+      'enchanted:sugar_cane': 2
     rare-drop: SUGAR
     rare-drop-chance: 0.006
     unlock-amount: 85
     upgrade-recipe-at:
       '12':
         SUGAR_CANE: 512
-        HAY_BLOCK: 64
+        'enchanted:sugar_cane': 6
         SUGAR: 48
 
   仙人掌仆从:
@@ -1140,14 +1147,14 @@ types:
     upgrade-recipe:
       CACTUS: 56
       GREEN_DYE: 16
-      HAY_BLOCK: 2
+      'enchanted:cactus': 2
     rare-drop: GREEN_DYE
     rare-drop-chance: 0.006
     unlock-amount: 80
     upgrade-recipe-at:
       '12':
         CACTUS: 448
-        HAY_BLOCK: 64
+        'enchanted:cactus': 6
         GREEN_DYE: 40
 
   绯红仆从:
@@ -1162,14 +1169,14 @@ types:
     upgrade-recipe:
       CRIMSON_STEM: 56
       NETHERRACK: 24
-      BONE_BLOCK: 2
+      'enchanted:crimson_stem': 2
     rare-drop: CRIMSON_FUNGUS
     rare-drop-chance: 0.006
     unlock-amount: 115
     upgrade-recipe-at:
       '12':
         CRIMSON_STEM: 448
-        BONE_BLOCK: 56
+        'enchanted:crimson_stem': 6
         CRIMSON_FUNGUS: 32
 
   诡异仆从:
@@ -1184,14 +1191,14 @@ types:
     upgrade-recipe:
       WARPED_STEM: 52
       NETHERRACK: 24
-      BONE_BLOCK: 2
+      'enchanted:warped_stem': 2
     rare-drop: CHORUS_FRUIT
     rare-drop-chance: 0.005
     unlock-amount: 125
     upgrade-recipe-at:
       '12':
         WARPED_STEM: 416
-        BONE_BLOCK: 56
+        'enchanted:warped_stem': 6
         CHORUS_FRUIT: 32
 
   岩浆怪猎人:
@@ -1206,14 +1213,14 @@ types:
     upgrade-recipe:
       MAGMA_CREAM: 36
       NETHERRACK: 24
-      BONE_BLOCK: 2
+      'enchanted:magma_cream': 2
     rare-drop: MAGMA_BLOCK
     rare-drop-chance: 0.004
     unlock-amount: 135
     upgrade-recipe-at:
       '12':
         MAGMA_CREAM: 288
-        BONE_BLOCK: 64
+        'enchanted:magma_cream': 6
         MAGMA_BLOCK: 24
 
   凋灵骷髅猎人:
@@ -1228,14 +1235,14 @@ types:
     upgrade-recipe:
       BONE: 56
       COAL: 32
-      BONE_BLOCK: 2
+      'enchanted:coal': 2
     rare-drop: WITHER_SKELETON_SKULL
     rare-drop-chance: 0.0015
     unlock-amount: 170
     upgrade-recipe-at:
       '12':
         BONE: 448
-        BONE_BLOCK: 64
+        'enchanted:coal': 6
         WITHER_SKELETON_SKULL: 4
 
   蜂蜜仆从:
@@ -1250,14 +1257,14 @@ types:
     upgrade-recipe:
       HONEYCOMB: 32
       HONEY_BOTTLE: 12
-      BONE_BLOCK: 2
+      'enchanted:honeycomb': 2
     rare-drop: HONEY_BOTTLE
     rare-drop-chance: 0.006
     unlock-amount: 105
     upgrade-recipe-at:
       '12':
         HONEYCOMB: 256
-        BONE_BLOCK: 48
+        'enchanted:honeycomb': 5
         HONEY_BOTTLE: 32
 
   猪灵猎人:
@@ -1272,12 +1279,12 @@ types:
     upgrade-recipe:
       GOLD_NUGGET: 48
       GOLD_INGOT: 12
-      BONE_BLOCK: 2
+      'enchanted:gold_nugget': 2
     rare-drop: CROSSBOW
     rare-drop-chance: 0.004
     unlock-amount: 140
     upgrade-recipe-at:
       '12':
         GOLD_NUGGET: 384
-        BONE_BLOCK: 64
+        'enchanted:gold_nugget': 6
         CROSSBOW: 8

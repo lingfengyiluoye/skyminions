@@ -27,10 +27,15 @@ public abstract class ItemRef {
     private ItemRef() {
     }
 
-    /** 配置解析入口：含冒号 → CraftEngine 自定义物品；否则原版 Material（未知返回 null）。 */
+    /** 配置解析入口：{@code enchanted:<key>} → 附魔资源；含冒号 → CraftEngine 自定义物品；否则原版 Material（未知返回 null）。 */
     public static ItemRef parse(String configKey) {
         if (configKey == null || configKey.isEmpty()) {
             return null;
+        }
+        // 附魔资源（Hypixel 式中间层浓缩材料）：enchanted:coal 等
+        if (configKey.regionMatches(true, 0, "enchanted:", 0, 10)) {
+            String rk = configKey.substring(10);
+            return EnchantedResource.ofKey(rk).map(EnchantedRef::new).orElse(null);
         }
         if (configKey.indexOf(':') >= 0) {
             return new CustomRef(configKey);
@@ -80,6 +85,11 @@ public abstract class ItemRef {
             if (stack == null || stack.getType() != material) {
                 return false;
             }
+            // 附魔资源与基础材质同 Material（如附魔煤炭=COAL+PDC），必须排除，
+            // 否则混合配方（enchanted:coal + COAL）里附魔物品会被散装需求误吞 → 永远无法合成
+            if (EnchantedResource.parse(stack).isPresent()) {
+                return false;
+            }
             // CraftEngine 自定义物品可能与原版材料同材质（如 PAPER），需排除；
             // minecraft: 命名空间一律视为原版（双保险，防 CE 端 id 形态变化）
             String ceId = CraftEngineHook.customItemId(stack);
@@ -124,7 +134,6 @@ public abstract class ItemRef {
 
     /** CraftEngine 自定义物品引用：按物品 id 精确匹配。 */
     public static final class CustomRef extends ItemRef {
-
         /** 原型缓存（id -> 原型）；未解析成功不缓存，下次再试。 */
         private static final Map<String, ItemStack> PROTOTYPES = new ConcurrentHashMap<>();
 
@@ -205,6 +214,64 @@ public abstract class ItemRef {
         @Override
         public String toString() {
             return id;
+        }
+    }
+
+    /**
+     * 附魔资源引用（Hypixel 式浓缩材料）：按 PDC 身份精确匹配，原版同材质物品不误计。
+     */
+    public static final class EnchantedRef extends ItemRef {
+
+        private final EnchantedResource resource;
+
+        public EnchantedRef(EnchantedResource resource) {
+            this.resource = resource;
+        }
+
+        public EnchantedResource resource() {
+            return resource;
+        }
+
+        @Override
+        public boolean matches(ItemStack stack) {
+            return EnchantedResource.parse(stack)
+                    .map(r -> r.resourceKey().equals(resource.resourceKey()))
+                    .orElse(false);
+        }
+
+        @Override
+        public String displayName() {
+            return resource.displayName();
+        }
+
+        @Override
+        public Material icon() {
+            return resource.base();
+        }
+
+        @Override
+        public String configKey() {
+            return "enchanted:" + resource.resourceKey();
+        }
+
+        @Override
+        public Material guideMaterial() {
+            return resource.base();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof EnchantedRef other && resource.resourceKey().equals(other.resource.resourceKey());
+        }
+
+        @Override
+        public int hashCode() {
+            return resource.resourceKey().hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return "enchanted:" + resource.resourceKey();
         }
     }
 }

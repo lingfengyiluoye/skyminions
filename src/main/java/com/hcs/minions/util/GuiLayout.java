@@ -45,6 +45,10 @@ public final class GuiLayout {
             for (Map.Entry<String, Material> e : Defaults.MATERIAL_DEFAULTS.entrySet()) {
                 readMaterial(out, yaml, e.getKey(), e.getValue());
             }
+            // 多色材质调色板（如 storage.decor.materials）：此前漏读，导致 gui.yml 配的多色边框不生效
+            for (String key : Defaults.MATERIALS_DEFAULTS.keySet()) {
+                readMaterials(out, yaml, key);
+            }
         }
         values = out;
         Logs.info("GUI 布局已加载（{} 项槽位/材质，来自 gui.yml layout 段）", out.size());
@@ -75,6 +79,15 @@ public final class GuiLayout {
             return m;
         }
         return Defaults.MATERIAL_DEFAULTS.getOrDefault(key, Material.STONE);
+    }
+
+    /** 材质调色板（多色边框玻璃等）：gui.yml 为字符串列表；缺失/全非法回退内置默认（可能为空数组）。 */
+    public static Material[] materials(String key) {
+        Object v = values.get(key);
+        if (v instanceof Material[] arr && arr.length > 0) {
+            return arr;
+        }
+        return Defaults.MATERIALS_DEFAULTS.getOrDefault(key, new Material[0]);
     }
 
     // ------------------------------------------------------------------
@@ -167,6 +180,29 @@ public final class GuiLayout {
         out.put(key, m);
     }
 
+    /** 读取材质列表（多色调色板）：gui.yml 为字符串列表，逐项解析，全非法则不覆盖默认。 */
+    private static void readMaterials(Map<String, Object> out, YamlConfiguration yaml, String key) {
+        String path = "layout." + key;
+        if (!yaml.isList(path)) {
+            return;
+        }
+        List<?> raw = yaml.getList(path);
+        List<Material> parsed = new ArrayList<>();
+        for (Object o : raw) {
+            Material m = matchMaterial(String.valueOf(o));
+            if (m != null) {
+                parsed.add(m);
+            } else {
+                Logs.warn("gui.yml layout.{} 材质项 {} 无法识别，已跳过", key, o);
+            }
+        }
+        if (parsed.isEmpty()) {
+            Logs.warn("gui.yml layout.{} 无有效材质，已回退默认", key);
+            return;
+        }
+        out.put(key, parsed.toArray(new Material[0]));
+    }
+
     /** 按枚举名大小写不敏感匹配材质（不用 Material.matchMaterial，避免其运行时依赖，纯单测可用）。 */
     private static Material matchMaterial(String name) {
         String target = name == null ? "" : name.trim();
@@ -187,6 +223,7 @@ public final class GuiLayout {
         private static final Map<String, Integer> SLOT_DEFAULTS = new HashMap<>();
         private static final Map<String, int[]> SLOTS_DEFAULTS = new HashMap<>();
         private static final Map<String, Material> MATERIAL_DEFAULTS = new HashMap<>();
+        private static final Map<String, Material[]> MATERIALS_DEFAULTS = new HashMap<>();
 
         private static final int[] RANGE_9_44 = {
                 9, 10, 11, 12, 13, 14, 15, 16, 17,
@@ -196,38 +233,52 @@ public final class GuiLayout {
         };
 
         static {
-            // ---- 仆从仓库 GUI（54 格，对齐 Hypixel：燃料左上/头颅居中/
-            //      模块槽在头颅左侧两格/皮肤右上；锁定存储格用黑玻璃） ----
-            SLOTS_DEFAULTS.put("storage.slots", RANGE_9_44);
-            SLOTS_DEFAULTS.put("storage.decor.slots", new int[]{1, 8, 45, 48, 52, 53});
+            // ---- 仆从仓库 GUI（54 格，用户自定义布局）：
+            //   顶行  0 燃料 | 3 信息 | 4 头颅 | 5 升级 | 6 皮肤（1/2/7/8 装饰）
+            //   左列  18/27/36/45 四个模块槽（燃料下方隔一格竖排；9 为间隔装饰）
+            //   间隔列 第 1 列（10/19/28/37）装饰，隔开模块列与存储区
+            //   存储区 第 2-8 列、第 1-4 行 = 28 格
+            //   底行  49 收集(居中) | 50 拾取 | 51 关闭 ----
+            SLOTS_DEFAULTS.put("storage.slots", new int[]{
+                    11, 12, 13, 14, 15, 16, 17,
+                    20, 21, 22, 23, 24, 25, 26,
+                    29, 30, 31, 32, 33, 34, 35,
+                    38, 39, 40, 41, 42, 43, 44
+            });
+            SLOTS_DEFAULTS.put("storage.decor.slots", new int[]{
+                    1, 2, 7, 8, 9, 10, 19, 28, 37, 46, 47, 48, 52, 53
+            });
             SLOT_DEFAULTS.put("storage.fuel.slot", 0);
-            SLOT_DEFAULTS.put("storage.info.slot", 6);
+            SLOT_DEFAULTS.put("storage.info.slot", 3);
             SLOT_DEFAULTS.put("storage.head.slot", 4);
             SLOT_DEFAULTS.put("storage.upgrade.slot", 5);
-            SLOT_DEFAULTS.put("storage.skin.slot", 7);
-            SLOT_DEFAULTS.put("storage.module1.slot", 2);
-            SLOT_DEFAULTS.put("storage.module2.slot", 3);
+            SLOT_DEFAULTS.put("storage.skin.slot", 6);
+            SLOT_DEFAULTS.put("storage.module1.slot", 18);
+            SLOT_DEFAULTS.put("storage.module2.slot", 27);
+            SLOT_DEFAULTS.put("storage.module3.slot", 36);
+            SLOT_DEFAULTS.put("storage.module4.slot", 45);
             SLOT_DEFAULTS.put("storage.collect.slot", 49);
-            SLOT_DEFAULTS.put("storage.autosell.slot", 47);
-            SLOT_DEFAULTS.put("storage.layout.slot", 46);
             SLOT_DEFAULTS.put("storage.pickup.slot", 50);
             SLOT_DEFAULTS.put("storage.close.slot", 51);
-            MATERIAL_DEFAULTS.put("storage.locked.material", Material.BLACK_STAINED_GLASS_PANE);
 
             MATERIAL_DEFAULTS.put("storage.info.material", Material.BOOK);
             MATERIAL_DEFAULTS.put("storage.upgrade.material-ok", Material.GOLD_INGOT);
             MATERIAL_DEFAULTS.put("storage.upgrade.material-lack", Material.FURNACE);
-            MATERIAL_DEFAULTS.put("storage.upgrade.material-max", Material.GOLD_INGOT);
+            MATERIAL_DEFAULTS.put("storage.upgrade.material-max", Material.NETHER_STAR);
             MATERIAL_DEFAULTS.put("storage.skin.material", Material.LEATHER_HELMET);
-            MATERIAL_DEFAULTS.put("storage.module-empty.material", Material.HOPPER);
+            MATERIAL_DEFAULTS.put("storage.module-empty.material", Material.LIGHT_GRAY_STAINED_GLASS_PANE);
             MATERIAL_DEFAULTS.put("storage.collect.material", Material.GOLD_BLOCK);
-            MATERIAL_DEFAULTS.put("storage.autosell.material-on", Material.EMERALD);
-            MATERIAL_DEFAULTS.put("storage.autosell.material-off", Material.GOLD_INGOT);
-            MATERIAL_DEFAULTS.put("storage.layout.material", Material.MAP);
             MATERIAL_DEFAULTS.put("storage.pickup.material", Material.ARMOR_STAND);
             MATERIAL_DEFAULTS.put("storage.close.material", Material.BARRIER);
-            MATERIAL_DEFAULTS.put("storage.decor.material", Material.BLACK_STAINED_GLASS_PANE);
-            MATERIAL_DEFAULTS.put("storage.locked.material", Material.BLACK_STAINED_GLASS_PANE);
+            // 边框装饰：多色玻璃调色板（逐槽循环取色，营造彩色边框）；单色回退键仍保留
+            MATERIAL_DEFAULTS.put("storage.decor.material", Material.CYAN_STAINED_GLASS_PANE);
+            MATERIALS_DEFAULTS.put("storage.decor.materials", new Material[]{
+                    Material.LIGHT_BLUE_STAINED_GLASS_PANE,
+                    Material.CYAN_STAINED_GLASS_PANE,
+                    Material.BLUE_STAINED_GLASS_PANE,
+                    Material.PURPLE_STAINED_GLASS_PANE
+            });
+            MATERIAL_DEFAULTS.put("storage.locked.material", Material.GRAY_STAINED_GLASS_PANE);
 
             // ---- 图鉴 GUI（54 格） ----
             SLOT_DEFAULTS.put("collection.all.slot", 0);
@@ -258,8 +309,9 @@ public final class GuiLayout {
             MATERIAL_DEFAULTS.put("fuel-gui.empty.material", Material.GRAY_STAINED_GLASS_PANE);
             MATERIAL_DEFAULTS.put("fuel-gui.close.material", Material.BARRIER);
 
-            // ---- 升级合成 GUI（54 格，Hypixel 式 3×3 合成玩法） ----
-            SLOTS_DEFAULTS.put("craft.grid.slots", new int[]{11, 12, 13, 20, 21, 22, 29, 30, 31});
+            // ---- 升级合成 GUI（54 格，Hypixel 式 4×4 合成玩法） ----
+            // 4×4=16 格：大配方（如小麦 T12：WHEAT×512=8 叠 + 附魔资源 + 金胡萝卜 + 本体）9 格装不下
+            SLOTS_DEFAULTS.put("craft.grid.slots", new int[]{10, 11, 12, 13, 19, 20, 21, 22, 28, 29, 30, 31, 37, 38, 39, 40});
             SLOT_DEFAULTS.put("craft.arrow.slot", 23);
             SLOT_DEFAULTS.put("craft.result.slot", 24);
             SLOT_DEFAULTS.put("craft.info.slot", 4);
@@ -296,11 +348,11 @@ public final class GuiLayout {
             MATERIAL_DEFAULTS.put("guide-list.decor.material", Material.BLACK_STAINED_GLASS_PANE);
             SLOTS_DEFAULTS.put("craft.decor.slots", new int[]{
                     0, 1, 2, 3, 5, 6, 7, 8,
-                    9, 10, 14, 15, 16, 17,
-                    18, 19, 25, 26,
-                    27, 28, 32, 33, 34, 35,
-                    36, 37, 38, 39, 40, 41, 42, 43, 44,
-                    45, 46, 47, 48, 50, 51, 52, 53
+                    9, 14, 15, 16, 17, 18,
+                    25, 26, 27,
+                    32, 33, 34, 35, 36,
+                    41, 42, 43, 44,
+                    46, 47, 48, 50, 51, 52, 53
             });
             MATERIAL_DEFAULTS.put("craft.arrow.material", Material.ARROW);
             MATERIAL_DEFAULTS.put("craft.decor.material", Material.BLACK_STAINED_GLASS_PANE);

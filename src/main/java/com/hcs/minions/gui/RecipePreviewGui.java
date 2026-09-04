@@ -33,11 +33,38 @@ import java.util.UUID;
  */
 public final class RecipePreviewGui {
 
-    /** 预览容器：绑定打开者 + 可循环的材料列表 + 当前下标。 */
-    public record PreviewHolder(UUID playerId, List<Material> materials, int index) implements InventoryHolder {
+    /** 预览容器：绑定打开者 + 可循环的材料列表 + 当前下标；创建后回填真实 {@link Inventory} 满足契约。 */
+    public static final class PreviewHolder implements InventoryHolder {
+        private final UUID playerId;
+        private final List<Material> materials;
+        private final int index;
+        private Inventory inventory;
+
+        public PreviewHolder(UUID playerId, List<Material> materials, int index) {
+            this.playerId = playerId;
+            this.materials = materials;
+            this.index = index;
+        }
+
+        public UUID playerId() {
+            return playerId;
+        }
+
+        public List<Material> materials() {
+            return materials;
+        }
+
+        public int index() {
+            return index;
+        }
+
+        void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
         @Override
         public @NotNull Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 
@@ -94,6 +121,9 @@ public final class RecipePreviewGui {
 
         Inventory inv = Bukkit.createInventory(new PreviewHolder(player.getUniqueId(),
                 List.copyOf(materials), idx), 45, GuiText.title("preview.title", v));
+        if (inv.getHolder() instanceof PreviewHolder holder) {
+            holder.attach(inv);
+        }
 
         // 装饰铺底
         ItemStack decor = named(GuiLayout.material("preview.decor.material"), Component.empty());
