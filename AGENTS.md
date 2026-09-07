@@ -24,16 +24,18 @@ mvn test
 ```
 com.hcs.minions
 ├── MinionsPlugin            # 组合根：只装配，严禁业务逻辑
-├── core/ServiceRegistry     # 服务注册表
-├── config/                  # 强类型 record 配置
-├── model/                   # Minion（运行时）、MinionData（持久化快照）
-├── repository/              # 接口 + 缓存 + SQLite/MySQL
+├── core/ServiceRegistry     # 服务注册表（全局只读共享）
+├── config/                  # 强类型 record 配置（PluginConfig / MinionTypeConfig / CollectionConfig）
+├── model/                   # Minion（运行时）、MinionData（持久化快照）、MinionType（注册表）
+├── repository/              # 接口 + 内存缓存 + SQLite/MySQL（CachedMinionRepository）
 ├── service/                 # MinionManager（全局调度器）+ 各业务服务
-├── work/                    # 策略模式（7 种仆从工作策略）
-├── gui/                     # MinionGUIListener（仓库）/ CollectionGui（图鉴）/ FuelGui（燃料选择）/ UpgradeCraftGui（升级合成）
+│   └── hook/                # SkyblockHook（SuperiorSkyblock2 反射接入）
+├── upgrade/                 # UpgradeService（模块效果）/ MinionUpgradeType（12 种模块）
+├── work/                    # 策略模式（7 种行为原型：MINING/FARMING/FORAGING/FISHING/COMBAT/RANCHING/GENERATOR）
+├── gui/                     # 仓库 / 图鉴 / 燃料选择 / 升级合成 / 材料指南
 ├── listener/                # 放置/交互事件
 ├── event/                   # 自定义 Bukkit Event
-└── util/                    # AsyncExecutor / ItemCodec / Logs / Messages / GuiText / GuiLayout
+└── util/                    # AsyncExecutor / ItemCodec / EnchantedResource / ItemRef / GuiLayout / GuiText / Messages / MaterialNames / Logs
 ```
 
 ## 关键开发约定
@@ -63,7 +65,13 @@ GUI 文案由 `gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>
 配置文件修改后执行 `/minion reload` 热重载；已放置仆从下次打开 GUI 时读取新配置。ConfigLoader 对无效配置回退默认值并在启动日志告警。
 
 ### 6. 材料抽象（ItemRef）
-升级配方材料使用 `ItemRef` 抽象类统一处理：支持原版 `Material` 与 CraftEngine 自定义物品，通过 `matches()`/`displayName()`/`icon()` 实现统一逻辑。
+升级配方材料使用 `ItemRef` 抽象类统一处理：支持原版 `Material`、CraftEngine 自定义物品、附魔资源（`EnchantedResource`），通过 `matches()`/`displayName()`/`icon()` 实现统一逻辑。
+
+### 7. 附魔资源系统（EnchantedResource）
+Hypixel 式浓缩材料：160 个基础资源 → 1 个附魔资源（PDC 身份标记 + 附魔光效 + 中文名）。超级压缩模块自动压缩，升级配方用 `enchanted:coal` 语法引用。末影珍珠系 32:1。
+
+### 8. 仆从类型配置驱动
+`MinionType` 由 `config.yml` 的 `types:` 段注册，新类型只需写 YAML 零 Java 改动。`MinionBehavior`（7 种）决定工作方式，`MinionCategory`（6 种）决定图鉴分类。旧英文 key 通过 `LEGACY_ALIASES` 兼容，存档零迁移。
 
 ## 依赖与集成
 
@@ -79,10 +87,10 @@ GUI 文案由 `gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>
 ## 权限结构
 
 ```
-minions.admin           # 管理权限（/minion 命令，默认 op）
-minions.use             # 使用仆从（默认人人有）
-minions.type.<类型中文名>     # 按类型控制
-minions.limit.<n>       # 数量上限（取最大 n）
+hcs.minions.admin           # 管理权限（/minion 命令，默认 op）
+hcs.minions.use             # 使用仆从（默认人人有）
+hcs.minions.type.<类型中文名>     # 按类型控制
+hcs.minions.limit.<n>       # 数量上限（取最大 n，与里程碑槽位加成叠加）
 ```
 
 ## 注意事项
@@ -95,4 +103,5 @@ minions.limit.<n>       # 数量上限（取最大 n）
 - 放置限制：同格禁放 + 仆从间最小间距（`min-placement-distance`）；玩家休眠半径 `player-scan-radius` 内无人则停产
 - DB 写操作（upsert/delete）带指数退避重试，重试耗尽后保留脏标记下轮再试，不丢数据
 - 方块破坏与 `Inventory#addItem` 均在主线程，仅 Vault 售卖异步
+- 虚拟线程执行器（Java 21 `Executors.newVirtualThreadPerTaskExecutor()`）承载所有 IO
 - **严禁在业务代码中空 catch 吞异常**——捕获后必须记录并优雅降级

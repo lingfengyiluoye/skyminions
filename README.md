@@ -1,127 +1,245 @@
-# SkyMinions —— 硬核生存仆从系统（Hypixel 风格）
+# SkyMinions — Hypixel 风格仆从系统
 
-Paper 1.21+ 仆从插件：放置后是一个**盔甲架小人**，在指定范围内自动工作，
-右键小人**打开真实仓库（箱子 GUI）**；支持 Skyblock 式**升级系统**、**燃料系统**、
-自动售卖、空岛联动，权限与 **LuckPerms** 联动。
+[![Build & Test](https://github.com/lingfengyiluoye/skyminions/actions/workflows/build.yml/badge.svg)](https://github.com/lingfengyiluoye/skyminions/actions/workflows/build.yml)
+[![Paper 1.21+](https://img.shields.io/badge/Paper-1.21%2B-blue)](https://papermc.io/)
+[![JDK 21](https://img.shields.io/badge/JDK-21%2B-orange)](https://adoptium.net/)
+[![License](https://img.shields.io/badge/License-Private-red)](#)
 
-可选依赖：Vault（经济）、SuperiorSkyblock2（空岛）、LuckPerms（权限，无需硬依赖）、
-CraftEngine（升级配方可用其自定义物品作材料，软依赖反射接入，未安装自动降级）。
+**Paper 1.21+ 仆从插件** — 一比一对齐 Hypixel SkyBlock Minions 玩法：盔甲架小人放置后自动工作，真实箱子仓库，Hypixel 式升级合成 / 燃料系统 / 模块槽 / 图鉴收集 / 里程碑奖励 / 离线收益，全部配置驱动、热重载生效。
+
+> **44 种仆从类型** × **7 种行为原型** × **12 种升级模块** × **50+ 种附魔资源**
 
 ---
 
-## 一、功能
+## 一、核心特性
 
-| 功能 | 说明 |
+### 仆从类型（44 种，配置驱动）
+
+| 分类 | 数量 | 类型 |
+|---|---|---|
+| 采矿 MINING | 12 | 煤矿 / 铁矿 / 铜矿 / 金矿 / 红石 / 青金 / 钻石 / 绿宝石 / 石英 / 黑曜石 / 冰雪 / 蜂蜜 / 沙砾 / 沙漠 |
+| 农业 FARMING | 10 | 小麦 / 胡萝卜 / 马铃薯 / 南瓜 / 西瓜 / 甜菜 / 可可 / 下界疣 / 甘蔗 / 仙人掌 / 花卉 / 蘑菇 |
+| 伐木 FORAGING | 10 | 橡木 / 白桦 / 云杉 / 丛林 / 金合欢 / 深色橡木 / 樱花 / 红树 / 绯红 / 诡异 |
+| 战斗 COMBAT | 7 | 僵尸 / 骷髅 / 苦力怕 / 蜘蛛 / 末影人 / 烈焰人 / 史莱姆 / 岩浆怪 / 凋灵骷髅 / 猪灵 |
+| 钓鱼 FISHING | 1 | 钓鱼仆从 |
+| 畜牧 RANCHING | 5 | 牛 / 羊 / 鸡 / 猪 / 兔 |
+
+新增类型只需在 `config.yml` 的 `types:` 段写一段 YAML，零 Java 改动。
+
+### 7 种行为原型（策略模式）
+
+| 行为 | 工作方式 | 特点 |
+|---|---|---|
+| MINING | 模拟采集（只读方块类型，不破坏） | 摆什么矿产什么，产量与范围内矿石数量正比 |
+| FARMING | 模拟收割（读取 Ageable 生长阶段） | 成熟作物反复产出，无需收割/补种 |
+| FORAGING | 真实连锁砍伐 + 自动补种 | BFS 整棵树一次砍光，树根补种对应树苗 |
+| FISHING | 模拟钓鱼（附近有水即工作） | 长冷却慢节奏，25% 概率双倍 |
+| COMBAT | 真实击杀优先 + 模拟回退 | 范围内有怪则 `damage()` 击杀触发 EntityDeathEvent；无怪时模拟掉落 |
+| RANCHING | 纯模拟畜牧（战利品表 roll） | 不生成实体，防大规模养殖卡服 |
+| GENERATOR | 生成→采集循环 | 自动在固体方块上方生成圆石再采集 |
+
+### 升级模块（12 种）
+
+| 模块 | 效果 |
 |---|---|
-| 盔甲架小人 | 小号盔甲架 + 固定贴图头颅 + 染色皮革盔甲身体 + 手持工具，锁定装备防扒 |
-| 七类仆从 | 矿工/农夫（**模拟采集**：只统计范围内可采方块/成熟作物数量，产量与数量成正比但不破坏方块，摆得越多产得越快）/伐木工（连锁整棵树，砍完自动在树根补种对应树苗）/钓鱼（长冷却慢节奏）/猎魔（范围杀敌：以真实伤害击杀工作范围内怪物并触发死亡事件，便于任务/统计插件联动；无怪时模拟产出） + **牧民**（纯模拟畜牧：每次工作随机牛羊鸡猪按战利品表 roll 掉落，不生成动物实体，防大规模养殖卡服）+ **圆石**（生成器玩法：自动生成圆石再采，免搭刷石机） |
-| 仓库 | 右键小人打开真实箱子，直接取/放物品；**满仓停工**（对齐 Hypixel）：仓库满且无自动售卖时停产，头顶名牌追加红字告警、信息卡状态行变红，取货/开售卖后自动恢复 |
-| 图鉴 GUI | `/minions` 打开 6 行图鉴：顶行分类过滤（采矿/农业/伐木/战斗/钓鱼/特殊）+ 分页卡片（已解锁等级/已放置数/总产出/下一级材料/收集进度条）+ 底行翻页与总进度 x/y；未解锁类型显示 ??? 与收集进度；点击卡片在聊天栏查看升级配方 |
-| 升级系统 | 仓库内"升级"按钮打开 **Hypixel 式 3×3 合成界面**：把上一级仆从本体 + 升级材料放入合成格，点击产物合成下一 Tier（材料来自玩家背包，关闭自动归还）；**多材料配方 + 陡增曲线**（每级材料量 ×growth，config.yml `upgrade-recipe` 自定义配方，支持 CraftEngine 自定义物品作材料），`upgrade-require-previous-body: false` 可免本体；合成格槽位/文案均可在 gui.yml 配置；Lv.1→12 解锁更多槽位、工作更快 |
-| 收集解锁 | 类型默认需累计收集对应产物达到 `unlock-amount` 才解锁（图鉴显示 ???，放置时提示进度）；`collection-unlock-enabled: false` 可整体关闭；管理员不受限 |
-| 升级模块 | 2 个模块槽（Tier 4/8 解锁）：自动熔炼 / 自动压缩 / 超级压缩 3000 / 钻石散布 / 范围扩展 / 自动售卖漏斗（Hypixel 原版玩法） |
-| 燃料系统 | 限时燃料（煤炭/岩浆桶/烈焰棒）+ 永久燃料（岩浆膏/荧石粉/日光传感器）；**空手点击燃料槽打开燃料选择 GUI**（列出背包装备的燃料，显示加速%/持续时间/背包数量，点击即装，状态卡潜行点击卸下）；也可手持燃料点击燃料槽或直接右键小人；状态卡实时显示加速与剩余时长 |
-| 皮肤系统 | 默认/黄金/钻石/万圣节皮肤，GUI 点击切换；每种皮肤携带独立头颅纹理（内置已验证贴图，config.yml `skins` 段可自行替换为任意头颅库 base64） |
-| 稀有掉落 | 每类仆从专属稀有掉落（矿工→绿宝石、牧民→鞍、圆石→黑曜石等），概率可配置，中奖默认全服广播（`rare-drop-broadcast: false` 改为仅通知主人） |
-| Collection 里程碑 | 资源累计跨阈值发金币（第 n 个 = coins-base × n），命中指定里程碑额外 **仆从槽位 +1**（多资源叠加，总加成受 `max-bonus-slots` 硬上限钳制，对齐 Hypixel 里程碑解锁仆从位玩法） |
-| 产出速率 | 仆从信息卡展示"≈ N 件/小时"估算（对齐 Hypixel GUI items/hour） |
-| 理想布局 | GUI 内 Ideal Layout 按钮：**圆石仆从实际生效**（开启后自动在生成点摆水/岩浆产圆石，关闭/拾取自动还原，只占用空位不破坏建筑）；其余类型展示布局指引（5x5 固定范围、光照、共享边界） |
-| 自动售卖 | 仓库满自动 Vault 卖钱（可开关，或装备「自动售卖漏斗」模块） |
-| 放置保护 | 同一格禁止重复放置；仆从间最小间距 `min-placement-distance`（默认 5 = 两个 5x5 工作区恰好不重叠，0 = 不限制）；`player-scan-radius` 半径内无玩家时仆从休眠不产出（默认 48，0 = 永不休眠，对齐 Hypixel） |
-| 空岛联动 | SuperiorSkyblock2：仅本岛放置、工作校验（缓存降频）；**团队成员共享**：同岛成员（岛主/队友）可共同操作仆从（开仓库/加燃料/升级/拾取） |
-| LuckPerms 权限 | 类型/数量上限/管理权限，见下 |
+| 自动熔炼 | 矿石/原矿/沙子 → 熔炼产物 |
+| 自动压缩 | 仓内散装 9:1 压成方块（仓储级结算） |
+| 超级压缩 3000 | 仓内散装 160:1 压成附魔资源（存储效率核心） |
+| 钻石散布 | 每次工作 ~2% 概率额外产出钻石 |
+| 范围扩展 | 工作面积 +5%（对齐原版） |
+| 自动售卖漏斗 | 仓库满时自动 Vault 卖钱 |
+| 简易漏斗 | 产出即时折价售卖（50%） |
+| 附魔漏斗 | 产出即时高价售卖（90%） |
+| 腐化之土 | 概率额外产出硫磺 + 腐化碎片 |
+| 小/中/大型储物箱 | 额外 +6/+12/+18 格仓库（占模块槽） |
 
-**一比一对齐 Hypixel 原版的关键机制**：工作范围固定 5x5（不随等级增长）、
-动作间隔逐等级对齐原版速率表（config.yml `cooldown-ticks` 逐级表，燃料加速仍生效）、
-升级走 3×3 合成玩法、模块槽位随 Tier 解锁、永久燃料、超级压缩（散装→附魔形态）；
-GUI 采用 Hypixel 界面
-设计：头颅居中作视觉锚点、信息书含完整产出统计（速度/件每小时/稀有掉落/累计）、
-升级按钮带“当前→下一级”速度对比与“需要/已有”材料实时比对、模块槽位于存储区下方、
-收集全部居中，卡片内用 ▬ 分隔线分节。所有物品名/Lore 均已关闭原版默认斜体。
-燃料槽为状态卡按钮（图标随状态变化：无燃料=煤炭 / 限时生效中=烈焰棒 / 永久生效中=岩浆桶），
-GUI 打开期间每秒自动刷新燃料剩余秒数与下次工作倒计时。
+模块槽位随 Tier 解锁（Tier 4/8 各开一个，共 4 槽）。
 
-**GUI 完全可自定义（gui.yml）**：全部卡片/按钮的标题与逐行 lore 均由
-`gui.yml` 模板驱动，支持 MiniMessage 颜色标签（`<gold>` `<green>` …）与 `{占位符}`
-（如 `{speed}`、`{rate}`、`{rare}`）；lore 行内含“当前不适用”的占位符时整行自动
-隐藏（如未配置稀有掉落的类型不显示稀有行）。**布局同样配置驱动**：`gui.yml` 的
-`layout:` 段可自定义四个 GUI（仓库/图鉴/燃料选择/升级合成）的全部按钮槽位与图标材质，
-槽位支持区间语法（`[9-44, 49]`），越界/无效值自动告警并回退内置默认。
-修改后 `/minion reload` 热重载。
+---
 
-## 二、使用
+## 二、附魔资源系统（Hypixel Enchanted Resources）
 
-1. `/minions` 打开仆从图鉴（分类过滤/翻页/收集进度/升级配方一览）。
-2. `/minion give miner 1`（或 `farmer` / `lumberjack` / `fisher` / `slayer` / `rancher` / `cobble`）发放生成物。
-3. 右键方块放置 → 生成盔甲架小人（固定面向放置者）。
-4. 右键小人 → 打开仓库（取物、加燃料、点"升级"、装备模块、切皮肤、点"拾取仆从"）。
-   - **加燃料**：空手点击左上角「燃料槽」打开燃料选择界面（背包装备、一键安装/卸下）；手持燃料点击燃料槽立即生效（限时燃料整组生效、永久燃料消耗 1 个）；也可直接手持燃料右键小人添加（每次消耗 1 个防误操作）；续期不同加速的燃料按剩余时长加权平均，永久燃料不可卸下（多次安装取最高值）。
-   - **升级**：点"升级"打开合成界面，把材料 + 1 个当前等级仆从本体放入 3×3 合成格，点击右侧产物合成（潜行点信息卡可从背包一键填充）。
-5. 潜行+右键小人 → 拾取（仓库/模块/皮肤随生成物保留）。
-6. `/minion upgrade <模块>` 发放模块，手持模块点击模块槽装备。
-7. `/minion collection` 查看资源累计与下一里程碑进度（含已解锁的里程碑槽位加成）。
+**50+ 种附魔资源**，160:1 压缩换算（末影珍珠 32:1）。纯原版实现：原版材质 + 附魔光效 + PDC 身份标记 + 中文名。
 
-模块列表：`auto_smelter`(自动熔炼) `compactor`(自动压缩) `super_compactor`(超级压缩 3000)
-`diamond_spreading`(钻石散布) `minion_expander`(范围扩展+5%面积) `auto_seller`(自动售卖漏斗)
+- 附魔煤炭 = 160 煤炭 · 附魔铁锭 = 160 粗铁 · 附魔钻石 = 160 钻石 ……
+- 超级压缩模块自动将仓内散装压成附魔资源
+- 升级配方支持 `enchanted:coal` 作为材料（CraftEngine 自定义物品也支持：`craftengine:my_item`）
+- 附魔资源按原价折算售卖（附魔煤炭 = 160 煤的价格），不会因压缩亏钱
 
-## 三、LuckPerms 权限
+---
 
-LuckPerms 会自动接管这些 Bukkit 权限，可在 LP 里给组或玩家：
+## 三、燃料系统（双轴制）
+
+### 速度燃料（限时加速）
+
+| 燃料 | 加速 | 持续 |
+|---|---|---|
+| 煤炭 / 木炭 | +5% | 3 分钟 |
+| 煤炭块 | +5% | 15 分钟 |
+| 岩浆桶 | +25% | 60 分钟 |
+| 烈焰棒 | +30% | 18 分钟 |
+
+### 永久燃料（不衰减）
+
+| 燃料 | 加速 |
+|---|---|
+| 岩浆膏 | +30% |
+| 荧石粉 | +35% |
+| 日光传感器 | +25% |
+
+### 催化剂（产量倍率轴）
+
+| 催化剂 | 倍率 | 持续 |
+|---|---|---|
+| 紫水晶碎片 | ×1.5 | 30 分钟 |
+| 烈焰粉 | ×2.0 | 15 分钟 |
+| 幻翼膜 | ×3.0 | 8 分钟 |
+
+加燃料方式：空手点击燃料槽打开燃料选择 GUI / 手持燃料点击燃料槽 / 手持燃料右键小人。
+
+---
+
+## 四、其他核心系统
+
+### 图鉴 GUI (`/minions`)
+6 行收藏界面：顶行分类过滤（采矿/农业/伐木/战斗/钓鱼/特殊）+ 分页卡片（已解锁等级/已放置数/总产出/下一级材料/收集进度条）+ 底行翻页与总进度。未解锁类型显示 ???。
+
+### 升级合成（Hypixel 式 3×3）
+仓库内"升级"按钮打开合成界面：上一级仆从本体 + 升级材料放入 3×3 合成格，点击产物合成下一 Tier。材料来自玩家背包，支持潜行一键填充，关闭自动归还。配方支持 `upgrade-recipe-at` 按等级覆盖（稀有掉落回流载体）。
+
+### Collection 里程碑
+资源累计跨阈值发金币（第 n 个 = coins-base × n），命中指定里程碑额外仆从槽位 +1。多种资源可叠加，总加成受 `max-bonus-slots` 硬上限钳制。
+
+### 离线收益（三道平衡锁）
+主人上线时结算闲置窗产出：
+1. **仓储即天花板**：仓库满 = 不再累计
+2. **仅基础速度**：不吃燃料加速/倍率/布局加成
+3. **燃料真实燃烧**：闲置时长从燃料剩余中等额扣除
+
+### 收集解锁
+类型默认需累计收集对应产物达到 `unlock-amount` 才解锁。`collection-unlock-enabled: false` 可整体关闭。管理员不受限。
+
+### 稀有掉落
+每类仆从专属稀有掉落，概率可配置。中奖默认全服广播（`rare-drop-broadcast: false` 改为仅通知主人）。配置 `upgrade-recipe-at` 可将稀有掉落设为高阶升级材料。
+
+### 空岛联动（SuperiorSkyblock2）
+仅本岛放置、工作校验。团队成员共享：同岛成员可共同操作仆从。
+
+### 放置保护
+同格禁止重复放置；仆从间最小间距 `min-placement-distance`；`player-scan-radius` 半径内无玩家时休眠。
+
+---
+
+## 五、使用
+
+```
+/minions                  — 打开仆从图鉴（分类过滤/翻页/收集进度/升级配方）
+/minion give <类型> [数量] — 发放仆从生成物（如：煤矿仆从、铁矿仆从）
+/minion collection        — 查看资源累计与下一里程碑进度
+/minion upgrade <模块>     — 发放升级模块
+/minion stats             — 运行时统计（运行时长/调度周期/已放置数/总产出）
+/minion reload            — 热重载配置
+/minion purge-orphans     — 清理孤儿盔甲架实体
+```
+
+放置：手持仆从生成物右键方块 → 生成盔甲架小人。  
+交互：右键小人 → 打开仓库（取物/加燃料/升级/装备模块/切皮肤/拾取）。  
+拾取：潜行+右键小人（仓库/模块/皮肤随生成物保留）。
+
+---
+
+## 六、权限（LuckPerms 联动）
 
 ```
 hcs.minions.admin           # 管理权限（/minion 命令，默认 op）
-hcs.minions.use             # 使用仆从（默认人人有）
-hcs.minions.type.miner      # 可用矿工仆从
-hcs.minions.type.farmer     # 可用农夫仆从
-hcs.minions.type.lumberjack # 可用伐木工仆从
-hcs.minions.type.rancher    # 可用牧民仆从（畜牧）
-hcs.minions.type.cobble     # 可用圆石仆从（生成器）
-hcs.minions.limit.<n>       # 仆从数量上限（取拥有的最大 n，如 hcs.minions.limit.20）
-                            # 上限可与 Collection 里程碑槽位加成叠加
+hcs.minions.use             # 使用仆从（默认 true）
+hcs.minions.type.<类型名>    # 按类型控制（如 hcs.minions.type.煤矿仆从）
+hcs.minions.limit.<n>       # 数量上限（取最大 n，与里程碑槽位加成叠加）
 ```
 
-示例（LP 命令）：`/lp group vip permission set hcs.minions.limit.20 true`
+示例：`/lp group vip permission set hcs.minions.limit.20 true`
 
-## 四、构建
+---
+
+## 七、构建与安装
 
 ```bash
 # 需要 JDK 21+ 与 Maven
 mvn clean package
-# 产物 target/SkyMinions-1.0.0.jar（约 100 KB 瘦 jar）
+# 产物：target/SkyMinions-1.0.0.jar（瘦 jar，约 100KB）
 ```
 
-运行时依赖（fastutil/HikariCP/sqlite-jdbc/mysql-connector-j）声明在 `paper-plugin.yml`
-的 `libraries`，由 Paper 首次加载时从 Maven Central 自动下载。
+运行时依赖（fastutil / HikariCP / SQLite / MySQL）由 `paper-plugin.yml` 的 `libraries` 声明，Paper 首次加载时从 Maven Central 自动下载。
+
+将 jar 放入 `plugins/` 目录，重启服务器即可。
 
 ---
 
-## 五、架构与包结构
+## 八、可选依赖
 
-**设计要点**：全局单 `GlobalRegionScheduler` 每 20 tick 遍历一次（O(n)+O(1) 短路）；
-矿工/农夫采用模拟采集（只读方块类型，不破坏方块，无光照/物理/更新包开销，
-产量与范围内可采数量正比，`harvest-cap` 控制单次上限）；
-`BlockSearcher` 限流搜索（邻接+随机，硬上限 <50）；方块破坏与 `Inventory#addItem`
-均在主线程，仅 Vault 售卖异步；GUI 用真实 `Inventory`（Bukkit 内部深拷贝，无刷物）。
+| 依赖 | 类型 | 说明 |
+|---|---|---|
+| Paper API 1.21+ | 必需 | 服务端 API |
+| Vault | 可选 | 经济系统（自动售卖/里程碑金币） |
+| SuperiorSkyblock2 | 可选 | 空岛联动（放置/工作校验/团队共享） |
+| CraftEngine | 可选 | 自定义物品作升级材料（反射接入，未安装自动降级） |
+| LuckPerms | 可选 | 权限管理（无需硬依赖，Bukkit 权限自动联动） |
+
+---
+
+## 九、配置
+
+所有配置文件修改后执行 `/minion reload` 热重载。
+
+| 文件 | 说明 |
+|---|---|
+| `config.yml` | 全局参数 + 仆从类型定义 + 升级配方 + 燃料 + 里程碑 |
+| `gui.yml` | GUI 文案模板（MiniMessage 颜色标签 + 占位符） + 布局（槽位/材质） |
+| `messages.yml` | 游戏内消息模板 |
+| `paper-plugin.yml` | 插件元数据 + 运行时依赖声明 |
+
+GUI 文案与布局全部模板化，支持 `/minion reload` 热重载，禁止硬编码槽位常量。
+
+---
+
+## 十、架构
 
 ```
 com.hcs.minions
-├── MinionsPlugin            # 组合根：只装配
-├── core/ServiceRegistry     # 服务注册表
-├── config/                  # 强类型 record 配置（product/upgrade-recipe/max-level/head-texture…）
-├── model/
-│   ├── Minion               # 运行时仆从：真实仓库 + 槽位布局 + 升级/燃料/拾取
-│   ├── MinionData           # 持久化快照（仓库序列化进 BLOB）
-│   ├── MinionType / BlockLocation
-├── repository/              # 接口 + 内存缓存 + SQLite/MySQL
-├── service/
-│   ├── MinionManager        # 全局调度器 + 掉落入仓 + 权限上限
-│   ├── MinionEntityService  # 盔甲架小人生成/销毁/反查
-│   ├── BlockSearcher        # 限流搜索
-│   ├── EconomyService / SellService / FuelService / PermissionService
-│   └── hook/SkyblockHook
-├── work/                    # 策略模式（Miner/Farmer/Lumberjack/Fisher/Slayer/Rancher/Generator）
-├── gui/                     # MinionGUIListener（仓库）/ CollectionGui（图鉴）/ FuelGui（燃料选择）/ UpgradeCraftGui（升级合成）
-├── listener/                # 放置/交互
-├── event/                   # 自定义 Bukkit Event
-└── util/                    # AsyncExecutor / ItemCodec / Logs
+├── MinionsPlugin            # 组合根：只装配，严禁业务逻辑
+├── core/ServiceRegistry     # 服务注册表（全局只读共享）
+├── config/                  # 强类型 record 配置（PluginConfig / MinionTypeConfig / CollectionConfig）
+├── model/                   # Minion（运行时）/ MinionData（持久化快照）/ MinionType（注册表）
+├── repository/              # 接口 + 内存缓存 + SQLite/MySQL（CachedMinionRepository）
+├── service/                 # MinionManager（全局调度器）/ BlockSearcher / SellService / FuelService
+│   └── hook/                # SkyblockHook（SuperiorSkyblock2 反射接入）
+├── upgrade/                 # UpgradeService（模块效果）/ UpgradeRules / MinionUpgradeType
+├── work/                    # 策略模式（7 种行为 × MinionWorkStrategy 接口）
+├── gui/                     # 仓库 / 图鉴 / 燃料选择 / 升级合成 / 材料指南
+├── listener/                # 放置 / 交互 / 猎魔死亡事件
+├── event/                   # 自定义 Bukkit Event（MinionPlacedEvent / MinionRemovedEvent / MinionCollectEvent / MinionLevelUpEvent）
+└── util/                    # AsyncExecutor / ItemCodec / EnchantedResource / ItemRef / GuiLayout / GuiText / Messages
 ```
+
+**设计要点**：
+- 全局单 `GlobalRegionScheduler` 每 20 tick 遍历一次（O(n)+O(1) 短路）
+- 方块破坏与 `Inventory#addItem` 均在主线程，仅 Vault 售卖异步
+- 虚拟线程执行器（Java 21）承载所有 IO
+- Folia / RegionScheduler 兼容
+- DB 写操作带指数退避重试，脏标记不丢数据
+
+---
+
+## 十一、测试
+
+```bash
+mvn test
+# 纯逻辑测试（JUnit 5），不依赖 Bukkit 运行时
+# 覆盖：配置加载 / 升级规则 / 方块搜索 / 燃料服务 / 仓储压缩 / GUI 布局 / 材料抽象
+```
+
+---
+
+## 十二、许可
+
+Private — 仅供个人服务器使用。
