@@ -1,5 +1,5 @@
 name: SkyMinions
-version: "1.0.0"
+version: "${project.version}"
 main: com.hcs.minions.MinionsPlugin
 api-version: "1.21"
 description: SkyMinions 仆从系统（Hypixel 风格）
@@ -7,13 +7,20 @@ authors: [hcs]
 
 # 可选软依赖：缺失时插件仍可运行，仅关闭对应能力
 dependencies:
-  - name: Vault
-    required: false
-  - name: SuperiorSkyblock2
-    required: false
-  # CraftEngine：升级配方可用 "craftengine:<id>" 自定义物品作材料（未安装时自动降级为仅原版材料）
-  - name: CraftEngine
-    required: false
+  server:
+    Vault:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    SuperiorSkyblock2:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    # CraftEngine：升级配方可用 "craftengine:<id>" 自定义物品作材料（未安装时自动降级为仅原版材料）
+    CraftEngine:
+      load: BEFORE
+      required: false
+      join-classpath: true
 
 # 运行时依赖：由 Paper 在加载插件时从 Maven Central 自动下载并挂载到插件类加载器，
 # 因此 jar 无需打包这些库（保持瘦 jar）。

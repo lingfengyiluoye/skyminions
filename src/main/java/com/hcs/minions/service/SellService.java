@@ -115,9 +115,7 @@ public final class SellService {
                     Bukkit.getRegionScheduler().run(plugin, center, ignored -> {
                         try {
                             Map<Integer, ItemStack> leftovers = minion.addToStorage(items.toArray(new ItemStack[0]));
-                            for (ItemStack leftover : leftovers.values()) {
-                                center.getWorld().dropItemNaturally(center.clone().add(0.5, 1.0, 0.5), leftover);
-                            }
+                            dropAround(center, leftovers);
                         } finally {
                             gate.set(false);
                             result.complete(0L);
@@ -131,13 +129,26 @@ public final class SellService {
             } catch (RuntimeException ex) {
                 Logs.error("提交售卖入账任务失败，正在恢复已扣物品 owner={} amount={}", minion.owner(), amount, ex);
                 Map<Integer, ItemStack> leftovers = minion.addToStorage(items.toArray(new ItemStack[0]));
-                for (ItemStack leftover : leftovers.values()) {
-                    center.getWorld().dropItemNaturally(center.clone().add(0.5, 1.0, 0.5), leftover);
-                }
+                dropAround(center, leftovers);
                 gate.set(false);
                 result.complete(0L);
             }
         });
         return result;
+    }
+
+    /** 在仆从所在位置还原溢出物品；区域已卸载时无法安全掉落，仅记日志（物品已尽力回仓）。 */
+    private static void dropAround(Location center, Map<Integer, ItemStack> leftovers) {
+        if (leftovers.isEmpty()) {
+            return;
+        }
+        org.bukkit.World world = center.getWorld();
+        if (world == null) {
+            Logs.warn("售卖回滚时所在区域已卸载，无法掉落溢出物品 count={}", leftovers.size());
+            return;
+        }
+        for (ItemStack leftover : leftovers.values()) {
+            world.dropItemNaturally(center.clone().add(0.5, 1.0, 0.5), leftover);
+        }
     }
 }

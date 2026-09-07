@@ -112,7 +112,7 @@ public final class UpgradeCraftGuiListener implements Listener {
         } catch (Throwable t) {
             // 兜底：指南打开失败只影响本按钮，绝不带崩服务器
             com.hcs.minions.util.Logs.error("材料指南清单打开失败: minion=" + minion.id(), t);
-            player.sendMessage("§c材料指南打开失败，详情见控制台日志");
+            player.sendMessage(Messages.MATERIALS_GUIDE_FAILED);
         }
     }
 

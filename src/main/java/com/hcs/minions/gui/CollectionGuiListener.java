@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 
 import java.util.List;
 import java.util.Map;
@@ -81,6 +82,20 @@ public final class CollectionGuiListener implements Listener {
             return;
         }
         cardClick(player, holder, slot);
+    }
+
+    /** 拖拽保护：图鉴为纯展示界面，任何拖入顶部界面的操作一律取消（防刷/防物品丢失）。 */
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (!(event.getInventory().getHolder() instanceof CollectionGui.CollectionHolder)) {
+            return;
+        }
+        for (int raw : event.getRawSlots()) {
+            if (raw < event.getInventory().getSize()) {
+                event.setCancelled(true);
+                return;
+            }
+        }
     }
 
     /**

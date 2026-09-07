@@ -112,6 +112,24 @@
 
     <build>
         <finalName>SkyMinions-${project.version}</finalName>
+        <resources>
+            <!-- 仅对 paper-plugin.yml 启用过滤，将 ${project.version} 作为版本单一来源注入；
+                 其余资源（config.yml/gui.yml/messages.yml 含 MiniMessage 与 {n} 占位）不过滤，避免误替换 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>paper-plugin.yml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>paper-plugin.yml</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

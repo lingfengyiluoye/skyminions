@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Map;
@@ -66,6 +67,20 @@ public final class FuelGuiListener implements Listener {
         }
     }
 
+    /** 拖拽保护：顶部选项区为展示按钮，禁止拖入；仅玩家背包区内部的拖拽放行。 */
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (!(event.getInventory().getHolder() instanceof FuelGui.FuelHolder)) {
+            return;
+        }
+        for (int raw : event.getRawSlots()) {
+            if (raw < event.getInventory().getSize()) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
     private static boolean isOptionSlot(int slot) {
         for (int s : FuelGui.optionSlots()) {
             if (s == slot) {
@@ -106,9 +121,9 @@ public final class FuelGuiListener implements Listener {
             return;
         }
         if (material == Material.LAVA_BUCKET) {
-            // 桶装燃料按消耗个数返还空桶（对齐原版习惯）
-            giveOrDrop(player, new org.bukkit.inventory.ItemStack(Material.BUCKET,
-                    Math.min(amount, Material.BUCKET.getMaxStackSize())));
+            // 桶装燃料按消耗个数返还空桶（对齐原版习惯）。addItem 会自动按最大堆叠拆分，
+            // 因此按 amount 全额返还即可，无需对最大堆叠取 min（否则一次进料 >16 桶会吞桶）。
+            giveOrDrop(player, new org.bukkit.inventory.ItemStack(Material.BUCKET, amount));
         }
         if (fv.permanent()) {
             minion.addPermanentFuel(fv.boost());

@@ -2,6 +2,7 @@ package com.hcs.minions.gui;
 
 import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
+import com.hcs.minions.event.MinionCollectEvent;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
@@ -18,6 +19,7 @@ import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -193,8 +195,10 @@ public final class MinionGUIListener implements Listener {
             return;
         }
         boolean bucketFuel = cursor.getType() == Material.LAVA_BUCKET;
+        int consumed = 0;
         if (fv.permanent()) {
             minion.addPermanentFuel(fv.boost());
+            consumed = 1;
             cursor.setAmount(cursor.getAmount() - 1);
             event.setCursor(cursor.getAmount() > 0 ? cursor : null);
             Fx.ok(player, Messages.permanentFuelEquipped((int) ((fv.boost() - 1) * 100)));
@@ -205,17 +209,20 @@ public final class MinionGUIListener implements Listener {
                 Fx.deny(player, Messages.multFuelWeak(minion.prodMultiplier()));
                 return;
             }
+            consumed = amount;
             event.setCursor(null);
             Fx.ok(player, Messages.multFuelEquipped(fv.multiplier(), fv.durationTicks() * amount / 20L));
         } else {
             int amount = cursor.getAmount();
+            consumed = amount;
             event.setCursor(null);
             minion.addFuel(fv.durationTicks() * amount, fv.boost());
             Fx.ok(player, Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
             Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
         }
         if (bucketFuel) {
-            giveOrDrop(player, new ItemStack(Material.BUCKET, 1)); // 桶装燃料返还空桶
+            // 桶装燃料按实际消耗个数返还空桶（LAVA_BUCKET 为限时燃料，整组消耗，不能用固定 1）
+            giveOrDrop(player, new ItemStack(Material.BUCKET, consumed));
         }
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
@@ -348,6 +355,8 @@ public final class MinionGUIListener implements Listener {
             Fx.deny(player, Messages.STORAGE_EMPTY);
             return;
         }
+        // 事件广播：在写入玩家背包前发布，让外部监听器可读到真实取出的产物列表
+        Bukkit.getPluginManager().callEvent(new MinionCollectEvent(minion, player, collected));
         giveOrDrop(player, collected.toArray(new ItemStack[0]));
         manager.save(minion); // 清仓状态立即登记落库
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());

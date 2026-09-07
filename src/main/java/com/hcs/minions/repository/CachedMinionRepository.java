@@ -49,9 +49,10 @@ public final class CachedMinionRepository implements MinionRepository {
 
     @Override
     public void register(Minion minion) {
-        cache.put(minion.id(), minion);
-        // 挂接钩子：此后任何 markDirty() 都会自动进入脏集合（P0-2 修复的核心链路）
+        // 先挂脏钩子再入缓存：否则入缓存到挂钩之间若有 markDirty()，脏标记会落在
+        // 钩子已设的集合之外而永不落库（TOCTOU 窗口导致丢持久化）。
         minion.setDirtyHook(() -> dirty.add(minion.id()));
+        cache.put(minion.id(), minion);
     }
 
     @Override

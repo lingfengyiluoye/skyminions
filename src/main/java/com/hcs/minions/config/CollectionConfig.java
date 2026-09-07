@@ -39,9 +39,9 @@ public record CollectionConfig(
         return milestones.clone();
     }
 
-    /** 第 n 个（1-based）里程碑的阈值。 */
+    /** 第 n 个（1-based）里程碑的阈值。n<=0 钳制到第 1 个，避免负数下标 AIOOBE。 */
     public long thresholdOf(int n) {
-        return milestones[Math.min(n, milestones.length) - 1];
+        return milestones[Math.min(Math.max(1, n), milestones.length) - 1];
     }
 
     /** 纯函数：累计量已达成的最高里程碑序号（1-based，0 = 尚未达成任何里程碑）。 */

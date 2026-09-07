@@ -68,6 +68,8 @@ public final class Messages {
     public static Component FUEL_HELP_HEADER;
     public static Component FUEL_HELP_TIP;
     public static Component FUEL_STATUS_NONE;
+    public static Component MATERIALS_GUIDE_FAILED;
+    public static Component MATERIALS_OVERVIEW_FAILED;
 
     // ------------------------------------------------------------------
     // 加载
@@ -143,6 +145,8 @@ public final class Messages {
         DEFAULTS.put("materials-override-note", "<light_purple>✦ 本级为专属覆盖配方（含稀有秘藏）</light_purple>");
         DEFAULTS.put("materials-hint", "<gray>提示：在升级合成界面点击「材料指南」可查看图形化合成摆法</gray>");
         DEFAULTS.put("materials-base-note", "<gray>以上为该级完整需求；基础配方随等级 ×growth 陡增</gray>");
+        DEFAULTS.put("materials-guide-failed", "<red>✖ 材料指南打开失败</red>\n<gray>详情见控制台日志</gray>");
+        DEFAULTS.put("materials-overview-failed", "<red>✖ 材料总览打开失败</red>\n<gray>详情见控制台日志</gray>");
     }
 
     /** 从 messages.yml 加载文案；文件不存在则写出默认文件。可重复调用（热重载）。 */
@@ -187,6 +191,8 @@ public final class Messages {
         FUEL_HELP_HEADER = render("fuel-help-header");
         FUEL_HELP_TIP = render("fuel-help-tip");
         FUEL_STATUS_NONE = render("fuel-status-none");
+        MATERIALS_GUIDE_FAILED = render("materials-guide-failed");
+        MATERIALS_OVERVIEW_FAILED = render("materials-overview-failed");
     }
 
     // ------------------------------------------------------------------

@@ -96,3 +96,7 @@ offline-total: "<green>✔ 共 {0} 件已入仓</green>\n<gray>仓库满后不�
 mult-fuel-equipped: "<green>✔ 已安装产量催化剂</green>\n<gray>产出 <yellow>×{0}</yellow>，持续 {1} 秒（仅在线生效）</gray>"
 mult-fuel-weak: "<gray>当前已有 ≥{0} 的更强倍率在生效，该催化剂未被消耗</gray>"
 
+# ============ 错误兜底（GUI 打开异常时的提示） ============
+materials-guide-failed: "<red>✖ 材料指南打开失败</red>\n<gray>详情见控制台日志</gray>"
+materials-overview-failed: "<red>✖ 材料总览打开失败</red>\n<gray>详情见控制台日志</gray>"
+

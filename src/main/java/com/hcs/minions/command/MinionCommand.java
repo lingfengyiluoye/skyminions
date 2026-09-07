@@ -143,7 +143,7 @@ public final class MinionCommand extends Command {
             com.hcs.minions.gui.UpgradeMaterialsGui.openOverview(player);
         } catch (Throwable t) {
             Logs.error("升级材料总览打开失败", t);
-            player.sendMessage("§c材料总览打开失败，详情见控制台日志");
+            player.sendMessage(Messages.MATERIALS_OVERVIEW_FAILED);
         }
     }
 
@@ -194,7 +194,17 @@ public final class MinionCommand extends Command {
             return MinionType.all().stream().map(MinionType::key).toList();
         }
         if (args.length == 3 && "materials".equalsIgnoreCase(args[0])) {
-            return List.of("1", "8", "10", "12");
+            // 等级补全取自该类型配置的最大等级，避免硬编码幻数
+            MinionType type = MinionType.fromKey(args[1]).orElse(null);
+            com.hcs.minions.config.MinionTypeConfig cfg = type == null ? null : config.get().type(type);
+            if (cfg == null) {
+                return List.of();
+            }
+            List<String> levels = new java.util.ArrayList<>();
+            for (int lv = 1; lv <= cfg.maxLevel(); lv++) {
+                levels.add(String.valueOf(lv));
+            }
+            return levels;
         }
         if (args.length == 2 && "upgrade".equalsIgnoreCase(args[0])) {
             return Arrays.stream(MinionUpgradeType.values()).map(MinionUpgradeType::key).toList();
