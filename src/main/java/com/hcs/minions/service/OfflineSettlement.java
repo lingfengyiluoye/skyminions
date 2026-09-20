@@ -81,6 +81,26 @@ public final class OfflineSettlement implements Listener {
         }
     }
 
+    /**
+     * 结算单个仆从的闲置窗（供两条路径调用，口径完全一致）：
+     * <ul>
+     *   <li>仆从从「休眠」恢复运转（{@code MinionManager} 的 DORMANT→活跃 转换）——
+     *       修复「主人在线但远离仆从」的盲区：旧实现只在 join 时结算，玩家长时间在线
+     *       只是走远再回来，这段闲置产出既不补发也不会被消费，凭空蒸发；</li>
+     *   <li>主人上线（{@link #onJoin} 延迟 3 秒）。</li>
+     * </ul>
+     *
+     * <p><b>线程契约</b>：本方法直接在调用方线程执行 {@link #settleOne}，
+     * 调用方必须已在仆从所在 region 线程（{@code MinionManager#processMinion}
+     * 与该类 join 路径的 region 调度都满足）。之所以内联而非再投递一次 region 任务：
+     * 投递会让结算晚于 processMinion 的 lastActive 推进，把闲置窗算成 0 而漏发。</p>
+     *
+     * <p>幂等性由 lastActive 已支付指针保证：同一窗口不会被支付两次。</p>
+     */
+    public void settle(Minion minion) {
+        settleOne(minion);
+    }
+
     private void settleOne(Minion minion) {
         try {
             OfflineProductionConfig cfgOff = config.get().offlineProduction();
@@ -113,8 +133,11 @@ public final class OfflineSettlement implements Listener {
                 return;
             }
 
-            // 锁③：燃料真实燃烧（先于产出计算）
-            long burnTicks = Math.min(minion.fuelTicks(), cappedSec * 20L);
+            // 锁③：燃料燃烧（默认关闭——离线只吃基础速度，烧燃料等于让玩家白烧；
+            // 需要"燃料离线也生效"的服主把 offline-production.burn-fuel-offline 置 true）
+            long burnTicks = cfgOff.burnFuelOffline()
+                    ? Math.min(minion.fuelTicks(), cappedSec * 20L)
+                    : 0L;
             if (burnTicks > 0) {
                 minion.setFuelTicks(minion.fuelTicks() - burnTicks);
             }

@@ -21,6 +21,11 @@ public final class Logs {
         LOG.info(msg, args);
     }
 
+    /** 调试级：仅排查配置/接入问题时关心的降级细节（默认级别下不输出）。 */
+    public static void debug(String msg, Object... args) {
+        LOG.debug(msg, args);
+    }
+
     public static void warn(String msg, Object... args) {
         LOG.warn(msg, args);
     }

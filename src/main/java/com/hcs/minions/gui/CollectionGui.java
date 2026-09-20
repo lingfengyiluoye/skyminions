@@ -9,6 +9,7 @@ import com.hcs.minions.service.CollectionService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.PermissionService;
 import com.hcs.minions.upgrade.UpgradeRules;
+import com.hcs.minions.util.Bars;
 import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
@@ -18,11 +19,9 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
@@ -103,6 +102,11 @@ public final class CollectionGui {
     private final MinionManager manager;
     private final CollectionService collection;
     private final PermissionService permissions;
+    /** statsOf 的秒级缓存（图鉴数据允许延迟，避免翻页时全量扫描）。 */
+    private volatile StatsCache statsCache;
+
+    /** 图鉴聚合缓存有效期：2 秒。 */
+    private static final long STATS_TTL_MS = 2_000L;
 
     public CollectionGui(ConfigProvider config, MinionManager manager,
                          CollectionService collection, PermissionService permissions) {
@@ -166,8 +170,8 @@ public final class CollectionGui {
         ItemStack item = named(icon, GuiText.title("collection-gui.filter.title", v));
         if (selected) {
             ItemMeta meta = item.getItemMeta();
-            meta.addEnchant(Enchantment.LURE, 1, true);
-            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            // 纯光效（不改战斗/钓鱼语义）：旧实现借 LURE 附魔发光，语义混乱
+            meta.setEnchantmentGlintOverride(true);
             item.setItemMeta(meta);
         }
         return item;
@@ -201,6 +205,7 @@ public final class CollectionGui {
         }
         int maxLevel = (int) stats[1];
         long collected = collection.get(owner, cfg.product());
+        long[] milestone = collection.milestoneProgress(owner, cfg.product());
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
         v.put("category", type.category().displayName());
@@ -210,19 +215,39 @@ public final class CollectionGui {
         v.put("produced", String.valueOf(stats[2]));
         v.put("collected", String.valueOf(collected));
         v.put("product", MaterialNames.of(cfg.product()));
+        // 收集进度条（同维度：已收集/下一里程碑）；已全部达成时不画条
+        if (milestone[1] > 0) {
+            v.put("collect_bar", Bars.colored(collected, milestone[1]));
+            v.put("collect_next", String.valueOf(milestone[1]));
+        } else {
+            v.put("collect_bar", "");
+            v.put("collect_next", "");
+        }
         int row = 1;
+        int shown = 0;
         if (maxLevel >= 1 && maxLevel < cfg.maxLevel()) {
             for (Map.Entry<ItemRef, Long> e : cfg.recipeFor(maxLevel).entrySet()) {
                 if (row > 3) {
                     break;
                 }
                 v.put("r" + row, com.hcs.minions.util.MaterialGuide.wrapHover(e.getKey().guideMaterial(),
-                        "<dark_gray>· " + e.getKey().displayName() + " ×" + e.getValue()));
+                        GuiText.raw("collection-gui.card.recipe-line", Map.of(
+                                "name", e.getKey().displayName(),
+                                "need", String.valueOf(e.getValue())))));
                 row++;
+                shown++;
             }
             if (row <= 3 && UpgradeRules.needsPreviousBody(maxLevel, cfg.maxLevel(), config.get().upgradeRequirePreviousBody())) {
-                v.put("r" + row, "<dark_gray>· " + cfg.displayName()
-                        + " 等级 " + Roman.of(maxLevel) + " ×1");
+                v.put("r" + row, GuiText.raw("collection-gui.card.body-line", Map.of(
+                        "name", cfg.displayName(),
+                        "tier", Roman.of(maxLevel))));
+                shown++;
+                row++;
+            }
+            if (shown < cfg.recipeFor(maxLevel).size()) {
+                // 卡片最多展示 3 行：超出的材料不静默截断（配方仍全部需要），显式告知
+                v.put("more", GuiText.raw("collection-gui.card.more-line",
+                        Map.of("count", String.valueOf(cfg.recipeFor(maxLevel).size()))));
             }
         }
         return named(type.icon(), GuiText.title("collection-gui.card.title", v),
@@ -252,11 +277,15 @@ public final class CollectionGui {
             inv.setItem(GuiLayout.slot("collection.next.slot"),
                     named(GuiLayout.material("collection.next.material"), GuiText.title("collection-gui.next.title")));
         }
-        Map<String, String> v = Map.of(
-                "unlocked", String.valueOf(unlockedCount(player)),
-                "total", String.valueOf(MinionType.all().size()),
-                "page", String.valueOf(page + 1),
-                "pages", String.valueOf(pages));
+        int unlocked = unlockedCount(player);
+        int total = MinionType.all().size();
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("unlocked", String.valueOf(unlocked));
+        v.put("total", String.valueOf(total));
+        // 图鉴总进度条（同维度：已解锁类型数/总类型数）
+        v.put("bar", Bars.colored(unlocked, total));
+        v.put("page", String.valueOf(page + 1));
+        v.put("pages", String.valueOf(pages));
         inv.setItem(GuiLayout.slot("collection.progress.slot"),
                 named(GuiLayout.material("collection.progress.material"),
                         GuiText.title("collection-gui.progress.title", v),
@@ -267,8 +296,15 @@ public final class CollectionGui {
     // 数据聚合（复用现有数据层，不新造存储）
     // ------------------------------------------------------------------
 
-    /** 玩家维度聚合：类型 -> [已放置数, 最高等级, 总产出]。 */
+    /** 玩家维度聚合：类型 -> [已放置数, 最高等级, 总产出]。
+     *  带 2 秒 TTL 缓存：翻页/过滤会重建界面并反复调用，全量扫描 manager.all()
+     *  在快速连点时是 O(全场仆从) 放大开销；图鉴数据允许秒级延迟。 */
     public Map<MinionType, long[]> statsOf(UUID owner) {
+        long now = System.currentTimeMillis();
+        StatsCache cache = statsCache;
+        if (cache != null && cache.owner.equals(owner) && now - cache.at < STATS_TTL_MS) {
+            return cache.stats;
+        }
         Map<MinionType, long[]> out = new LinkedHashMap<>();
         for (Minion minion : manager.all()) {
             if (!owner.equals(minion.owner())) {
@@ -279,7 +315,12 @@ public final class CollectionGui {
             s[1] = Math.max(s[1], minion.level());
             s[2] += minion.totalProduced();
         }
+        statsCache = new StatsCache(owner, now, out);
         return out;
+    }
+
+    /** statsOf 缓存记录（不可变快照，按主人 + 时间戳失效）。 */
+    private record StatsCache(UUID owner, long at, Map<MinionType, long[]> stats) {
     }
 
     /** 已解锁类型数（底行进度 x/y）。 */
@@ -313,12 +354,14 @@ public final class CollectionGui {
             return;
         }
         for (Map.Entry<ItemRef, Long> e : cfg.recipeFor(topLevel).entrySet()) {
-            player.sendMessage(Component.text("· " + e.getKey().displayName() + " ×" + e.getValue())
-                    .decoration(TextDecoration.ITALIC, false));
+            player.sendMessage(GuiText.title("collection-gui.chat.recipe-line", Map.of(
+                    "name", e.getKey().displayName(),
+                    "need", String.valueOf(e.getValue()))));
         }
         if (UpgradeRules.needsPreviousBody(topLevel, cfg.maxLevel(), config.get().upgradeRequirePreviousBody())) {
-            player.sendMessage(Component.text("· " + cfg.displayName() + " 等级 " + Roman.of(topLevel) + " ×1")
-                    .decoration(TextDecoration.ITALIC, false));
+            player.sendMessage(GuiText.title("collection-gui.chat.body-line", Map.of(
+                    "name", cfg.displayName(),
+                    "tier", Roman.of(topLevel))));
         }
     }
 

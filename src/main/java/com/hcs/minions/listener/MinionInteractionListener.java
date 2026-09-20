@@ -6,6 +6,8 @@ import com.hcs.minions.model.BlockLocation;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionType;
 import com.hcs.minions.service.CollectionService;
+import com.hcs.minions.service.EconomyService;
+import com.hcs.minions.config.FuelEntry;
 import com.hcs.minions.service.FuelService;
 import com.hcs.minions.service.MinionEntityService;
 import com.hcs.minions.service.MinionItemService;
@@ -47,10 +49,11 @@ public final class MinionInteractionListener implements Listener {
     private final CollectionService collection;
     private final SkyblockHook skyblock;
     private final ConfigProvider config;
+    private final EconomyService economy;
 
     public MinionInteractionListener(MinionManager manager, MinionItemService items, MinionEntityService entities,
                                      PermissionService permissions, CollectionService collection,
-                                     SkyblockHook skyblock, ConfigProvider config) {
+                                     SkyblockHook skyblock, ConfigProvider config, EconomyService economy) {
         this.manager = manager;
         this.items = items;
         this.entities = entities;
@@ -58,6 +61,7 @@ public final class MinionInteractionListener implements Listener {
         this.collection = collection;
         this.skyblock = skyblock;
         this.config = config;
+        this.economy = economy;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -96,6 +100,20 @@ public final class MinionInteractionListener implements Listener {
         }
 
         MinionTypeConfig cfg = config.get().type(type.get());
+        // 解锁金币门槛：收集达标后首次放置时缴纳一次（管理员豁免；无 Vault 时不收费）
+        if (cfg != null && cfg.hasUnlockCost() && !permissions.isAdmin(player)
+                && !collection.hasPaidUnlock(player.getUniqueId(), type.get().key())) {
+            long cost = cfg.unlockCost();
+            if (!economy.has(player, cost) || !economy.withdraw(player, cost)) {
+                player.sendMessage(Messages.unlockCostRequired(
+                        String.valueOf(cost),
+                        MaterialNames.of(cfg.product()),
+                        String.valueOf(cfg.unlockAmount())));
+                return;
+            }
+            collection.markPaidUnlock(player.getUniqueId(), type.get().key());
+            player.sendMessage(Messages.unlockCostCharged(String.valueOf(cost), cfg.displayName()));
+        }
         long fuel = items.parseFuel(hand);
         double fuelBoost = items.parseFuelBoost(hand);
         Minion minion = new Minion(
@@ -166,6 +184,11 @@ public final class MinionInteractionListener implements Listener {
         if (minion == null) {
             return;
         }
+        // 自愈重建会产生 PDC 一致的新盔甲架；旧 stand 若因竞态仍在，交互会落到
+        // 已被替换的仆从上。校验「当前仆从的实体就是被点的这个」，杜绝关公面前舞大刀
+        if (minion.stand() == null || !minion.stand().equals(stand)) {
+            return;
+        }
         // 主副手两次事件都会触发：主手处理完业务后，副手事件直接拦截，
         // 防止原版盔甲架交互在副手路径上产生不一致行为
         if (event.getHand() != EquipmentSlot.HAND) {
@@ -185,12 +208,12 @@ public final class MinionInteractionListener implements Listener {
         }
 
         ItemStack hand = player.getInventory().getItemInMainHand();
-        FuelService.FuelValue fuelValue = FuelService.valueOf(hand.getType());
+        FuelEntry fuelValue = FuelService.valueOf(hand);
         if (fuelValue != null) {
             if (fuelValue.permanent()) {
                 minion.addPermanentFuel(fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
-                returnEmptyContainer(player, hand.getType());
+                returnEmptyContainer(player, fuelValue);
                 com.hcs.minions.util.Fx.ok(player, Messages.permanentFuelEquipped((int) ((fuelValue.boost() - 1) * 100)));
             } else if (fuelValue.hasMultiplier()) {
                 // 每次只消耗 1 个；弱于当前倍率则不消耗
@@ -204,7 +227,7 @@ public final class MinionInteractionListener implements Listener {
                 // 每次只消耗 1 个，避免手持整组误操作一次性吃光（GUI 燃料槽仍可整组安装）
                 minion.addFuel(fuelValue.durationTicks(), fuelValue.boost());
                 hand.setAmount(hand.getAmount() - 1);
-                returnEmptyContainer(player, hand.getType());
+                returnEmptyContainer(player, fuelValue);
                 com.hcs.minions.util.Fx.ok(player, Messages.fuelAdded((int) ((fuelValue.boost() - 1) * 100)));
                 com.hcs.minions.util.Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
             }
@@ -222,10 +245,11 @@ public final class MinionInteractionListener implements Listener {
         } catch (Exception e) {
             // 生成物异常时不移除，避免丢数据；留日志便于定位（历史上曾出现静默拾取失败）
             Logs.error("拾取失败（生成物构造异常）: id=" + minion.id() + ", type=" + minion.type(), e);
-            player.sendMessage(Component.text("拾取失败：物品生成异常，详情见控制台日志", NamedTextColor.RED));
+            player.sendMessage(Messages.pickupFailed());
             return;
         }
         manager.remove(minion, player);
+        com.hcs.minions.util.Sounds.pickup(player); // 右键拾取与 GUI 拾取同一音效
         giveOrDrop(player, spawner);
         com.hcs.minions.util.Fx.pickup(player);
     }
@@ -238,9 +262,10 @@ public final class MinionInteractionListener implements Listener {
     }
 
     /** 桶装燃料（岩浆桶）消耗后返还空桶，对齐原版习惯。 */
-    private static void returnEmptyContainer(Player player, Material fuelMaterial) {
-        if (fuelMaterial == Material.LAVA_BUCKET) {
-            giveOrDropStatic(player, new ItemStack(Material.BUCKET, 1));
+    /** 桶装燃料消耗后返还空容器（配置驱动：returns-empty）。 */
+    private static void returnEmptyContainer(Player player, FuelEntry fuel) {
+        if (fuel.hasEmptyContainer()) {
+            giveOrDropStatic(player, new ItemStack(fuel.returnsEmpty(), 1));
         }
     }
 

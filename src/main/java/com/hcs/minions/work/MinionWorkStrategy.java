@@ -50,7 +50,8 @@ public interface MinionWorkStrategy {
     static List<ItemStack> mergeToStacks(Map<Material, Integer> counts) {
         List<ItemStack> out = new ArrayList<>();
         for (Map.Entry<Material, Integer> e : counts.entrySet()) {
-            int remaining = e.getValue();
+            // 防御：调用方传入 (int) total 在 maxUnits 超 Integer.MAX_VALUE 时可能截断为负
+            int remaining = Math.max(0, e.getValue());
             int maxSize = Math.max(1, e.getKey().getMaxStackSize());
             while (remaining > 0) {
                 int take = Math.min(maxSize, remaining);

@@ -33,6 +33,7 @@ import com.hcs.minions.util.AsyncExecutor;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.Messages;
+import com.hcs.minions.util.Sounds;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkStrategyRegistry;
 import com.hcs.minions.work.farmer.FarmerStrategy;
@@ -42,6 +43,7 @@ import com.hcs.minions.work.lumberjack.LumberjackStrategy;
 import com.hcs.minions.work.miner.MinerStrategy;
 import com.hcs.minions.work.rancher.RancherStrategy;
 import com.hcs.minions.work.slayer.SlayerStrategy;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
@@ -58,11 +60,17 @@ public final class MinionsPlugin extends JavaPlugin {
     public void onEnable() {
         Messages.load(this);
         GuiText.load(this);
-        com.hcs.minions.util.EnchantedResource.init(this); // 附魔资源身份键（Hypixel 式浓缩材料）
+        Sounds.init(this);
+        com.hcs.minions.util.EnchantedResource.init(this); // 附魔资源 PDC 身份键（内置默认表）
 
         PluginConfig config = ConfigLoader.load(this);
         ConfigProvider configProvider = new ConfigProvider(this, config);
         registry.setConfig(config);
+        // 配置驱动的数值表（热重载入口在 MinionCommand.reload）
+        com.hcs.minions.util.EnchantedResource.reload(config.enchantedResources());
+        com.hcs.minions.service.FuelService.reload(config.fuels());
+        com.hcs.minions.config.GameMaps.reload(config);
+        Sounds.reload(com.hcs.minions.config.ConfigLoader.soundsSection(this));
 
         // 程序化注册全部权限节点（paper-plugin.yml 不支持 permissions 段，
         // 必须在此注册 LuckPerms /lp tree 才可见、默认值才生效）
@@ -85,7 +93,7 @@ public final class MinionsPlugin extends JavaPlugin {
         strategyList.add(new FarmerStrategy());
         strategyList.add(new LumberjackStrategy());
         strategyList.add(new FisherStrategy());
-        strategyList.add(new SlayerStrategy());
+        strategyList.add(new SlayerStrategy(this));
         strategyList.add(new RancherStrategy());
         strategyList.add(new GeneratorStrategy());
         WorkStrategyRegistry strategies = new WorkStrategyRegistry(strategyList);
@@ -103,7 +111,7 @@ public final class MinionsPlugin extends JavaPlugin {
         UpgradeService upgrades = new UpgradeService(this);
         registry.setUpgrades(upgrades);
 
-        CollectionService collection = new CollectionService(this, configProvider, economy);
+        CollectionService collection = new CollectionService(this, configProvider, economy, async);
         collection.load();
         registry.setCollection(collection);
 
@@ -117,7 +125,7 @@ public final class MinionsPlugin extends JavaPlugin {
 
         CollectionGui collectionGui = new CollectionGui(configProvider, manager, collection, permissions);
         getServer().getPluginManager().registerEvents(new MinionGUIListener(manager, itemService, entities, configProvider, upgrades, skyblock), this);
-        getServer().getPluginManager().registerEvents(new MinionInteractionListener(manager, itemService, entities, permissions, collection, skyblock, configProvider), this);
+        getServer().getPluginManager().registerEvents(new MinionInteractionListener(manager, itemService, entities, permissions, collection, skyblock, configProvider, economy), this);
         getServer().getPluginManager().registerEvents(new CollectionGuiListener(collectionGui, manager, configProvider, itemService), this);
         getServer().getPluginManager().registerEvents(new FuelGuiListener(manager, configProvider), this);
         getServer().getPluginManager().registerEvents(
@@ -130,11 +138,30 @@ public final class MinionsPlugin extends JavaPlugin {
         getServer().getCommandMap().register("skyminions", new MinionCommand(itemService, manager, upgrades, configProvider, this));
         getServer().getCommandMap().register("skyminions", new MinionsCommand(collectionGui));
 
-        // 离线收益结算：主人上线时按三道平衡锁补发闲置窗产出
-        getServer().getPluginManager().registerEvents(
-                new OfflineSettlement(this, configProvider, manager, strategies::get, collection, upgrades), this);
+        // 离线收益结算：主人上线时按三道平衡锁补发闲置窗产出；
+        // 并作为「休眠恢复运转」回调，补发主人在线但远离仆从期间的闲置产出
+        OfflineSettlement offline = new OfflineSettlement(this, configProvider, manager,
+                strategies::get, collection, upgrades);
+        getServer().getPluginManager().registerEvents(offline, this);
+        manager.setOnReactivate(offline::settle);
 
-        // Collection 定期落盘（60 秒）
+        // PlaceholderAPI 占位符扩展（可选）：未安装则不注册
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            try {
+                new com.hcs.minions.hook.MinionsPlaceholderExpansion(manager, collection, permissions).register();
+                Logs.info("已注册 PlaceholderAPI 占位符（%skyminions_*%）");
+            } catch (Throwable t) {
+                Logs.warn("PlaceholderAPI 扩展注册失败（不影响其他功能）: {}", t.getMessage());
+            }
+        }
+
+        // bStats 匿名用量统计（可选，库缺失时静默跳过）
+        com.hcs.minions.hook.MetricsHook.register(this,
+                () -> manager.all().size(),
+                () -> com.hcs.minions.model.MinionType.all().size(),
+                () -> config.database().isSqlite() ? "sqlite" : "mysql");
+
+        // Collection 定期落盘（60 秒，只写脏分片）
         async.scheduleAtFixedRate(collection::save, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
 
         manager.start();
@@ -144,10 +171,10 @@ public final class MinionsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         // 关闭顺序：先停调度与 GUI -> 等待在途异步任务收尾（避免打断落库）
-        // -> 落盘 collection.yml -> 冲刷并关闭仓库
+        // -> 同步冲刷 collection 分片 -> 冲刷并关闭仓库
         registry.manager().stop();
         registry.async().close();
-        registry.collection().save();
+        registry.collection().saveNowBlocking();
         registry.repository().close();
         Logs.info("SkyMinions 已关闭");
     }

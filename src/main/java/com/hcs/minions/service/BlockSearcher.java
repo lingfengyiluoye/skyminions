@@ -1,7 +1,6 @@
 package com.hcs.minions.service;
 
 import com.hcs.minions.model.Minion;
-import org.bukkit.World;
 import org.bukkit.block.Block;
 
 import java.util.ArrayList;
@@ -31,7 +30,14 @@ public final class BlockSearcher {
         this.maxChecks = Math.min(Math.max(1, maxChecks), HARD_LIMIT);
     }
 
-    public Optional<Block> find(World world, Block anchor, int radius, Predicate<Block> target, Minion minion) {
+    /**
+     * 限流搜索：以 anchor 为中心、半径 radius 的两阶段螺旋扫描。
+     *
+     * @param anchor 搜索中心（仆从所在方块）
+     * @param target 命中判定（须为纯读取，不得触发方块加载）
+     * @param minion 持有扫描游标的仆从
+     */
+    public Optional<Block> find(Block anchor, int radius, Predicate<Block> target, Minion minion) {
         List<int[]> offsets = offsets(radius);
         int n = offsets.size();
         int near = Math.min(n, maxChecks / 2);

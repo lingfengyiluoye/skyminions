@@ -21,6 +21,11 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    # PlaceholderAPI：占位符扩展（%skyminions_count% 等）；未安装时跳过注册
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+      join-classpath: true
 
 # 运行时依赖：由 Paper 在加载插件时从 Maven Central 自动下载并挂载到插件类加载器，
 # 因此 jar 无需打包这些库（保持瘦 jar）。
@@ -30,6 +35,7 @@ libraries:
   - org.xerial:sqlite-jdbc:3.46.0.0
   - com.mysql:mysql-connector-j:8.4.0
   - com.google.protobuf:protobuf-java:3.25.1
+  - org.bstats:bstats-bukkit:3.1.0
 
 # 权限说明（LuckPerms 联动）：
 #   注意：paper-plugin.yml 不支持 permissions 声明段（Paper 限制），

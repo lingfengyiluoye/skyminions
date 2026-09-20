@@ -3,6 +3,8 @@ package com.hcs.minions.service;
 import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.util.Logs;
+import com.hcs.minions.util.Messages;
 import com.hcs.minions.util.Roman;
 import com.hcs.minions.util.Textures;
 import net.kyori.adventure.text.Component;
@@ -97,7 +99,7 @@ public final class MinionEntityService {
         Component name = switch (status) {
             case WORKING -> Component.text("▶ ", NamedTextColor.GRAY).append(base);
             case HALTED -> Component.text("⚠ ", NamedTextColor.YELLOW).append(base)
-                    .append(Component.text(" ⚠仓库已满", NamedTextColor.RED));
+                    .append(Messages.plateHaltedSuffix());
             case DORMANT -> {
                 base = base.colorIfAbsent(NamedTextColor.DARK_GRAY);
                 yield Component.text("⏾ ", NamedTextColor.DARK_GRAY).append(base);
@@ -160,6 +162,8 @@ public final class MinionEntityService {
         try {
             return UUID.fromString(id);
         } catch (IllegalArgumentException e) {
+            // PDC 值损坏（手动改档/外服数据）：记录而非静默吞掉，便于定位
+            Logs.warn("仆从盔甲架 PDC 中的 UUID 损坏（{}），已忽略该实体", id);
             return null;
         }
     }

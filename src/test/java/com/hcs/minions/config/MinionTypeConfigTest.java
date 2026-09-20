@@ -25,7 +25,7 @@ class MinionTypeConfigTest {
         return new MinionTypeConfig(
                 "test", "测试", 12, 1.0, 0.1, 72000L, 20, 1.0,
                 Material.COBBLESTONE, recipe, growth, 2, 1, new int[0],
-                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, Map.of(), java.util.Set.of(), null);
+                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, 0L, Map.of(), java.util.Set.of(), null);
     }
 
     @Test
@@ -58,7 +58,7 @@ class MinionTypeConfigTest {
         MinionTypeConfig c = new MinionTypeConfig(
                 "t", "t", 12, 1.0, 0.1, 72000L, 20, 1.0,
                 Material.COBBLESTONE, recipe, 1.01, 2, 1, new int[0],
-                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, Map.of(), java.util.Set.of(), null);
+                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, 0L, Map.of(), java.util.Set.of(), null);
         // round(1 × 1.01^n) 可能为 1 附近，至少保底 1
         assertTrue(c.recipeFor(1).get(new ItemRef.VanillaRef(Material.APPLE)) >= 1);
         assertTrue(c.recipeFor(11).get(new ItemRef.VanillaRef(Material.APPLE)) >= 1);
@@ -85,7 +85,7 @@ class MinionTypeConfigTest {
         MinionTypeConfig c = new MinionTypeConfig(
                 "t", "t", 12, 1.0, 0.0, 72000L, 300, 1.0,
                 Material.COBBLESTONE, recipe, 1.25, 2, 1, new int[]{300, 300, 260},
-                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, Map.of(), java.util.Set.of(), null);
+                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, 0L, Map.of(), java.util.Set.of(), null);
         assertEquals(300, c.cooldownTicksAt(1));
         assertEquals(260, c.cooldownTicksAt(3));
         assertEquals(260, c.cooldownTicksAt(12)); // 超出表长取末项
@@ -106,7 +106,7 @@ class MinionTypeConfigTest {
                 "t", "t", 12, 1.0, 0.0, 72000L, 20, 1.0,
                 Material.COBBLESTONE, recipe, 1.25, 2, 1, new int[0],
                 java.util.Set.of(Material.COBBLESTONE, Material.STONE), tiers,
-                null, 0.0, 0L, Map.of(), java.util.Set.of(), null);
+                null, 0.0, 0L, 0L, Map.of(), java.util.Set.of(), null);
 
         assertTrue(c.hasTierGating());
         assertEquals(java.util.Set.of(Material.COBBLESTONE, Material.STONE), c.targetsAt(1));
@@ -147,7 +147,7 @@ class MinionTypeConfigTest {
         MinionTypeConfig c = new MinionTypeConfig(
                 "t", "t", 12, 1.0, 0.0, 72000L, 20, 1.0,
                 Material.COBBLESTONE, recipe, 1.25, 2, 1, new int[0],
-                java.util.Set.of(Material.COBBLESTONE), tiers, null, 0.0, 0L, Map.of(), java.util.Set.of(), null);
+                java.util.Set.of(Material.COBBLESTONE), tiers, null, 0.0, 0L, 0L, Map.of(), java.util.Set.of(), null);
         assertTrue(!c.hasTierGating());
     }
 
@@ -161,7 +161,7 @@ class MinionTypeConfigTest {
         MinionTypeConfig c = new MinionTypeConfig(
                 "t", "t", 12, 1.0, 0.0, 72000L, 20, 1.0,
                 Material.COBBLESTONE, new LinkedHashMap<>(Map.of(COBBLE, 64L)), 1.25, 2, 1, new int[0],
-                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, overrides,
+                java.util.Set.of(Material.COBBLESTONE), Map.of(), null, 0.0, 0L, 0L, overrides,
                 java.util.Set.of(), null);
         // 非覆盖级：基础陡增
         assertEquals(64L, c.recipeFor(1).get(COBBLE));

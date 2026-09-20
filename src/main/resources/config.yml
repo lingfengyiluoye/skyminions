@@ -51,6 +51,10 @@ offline-production:
   max-hours: 24        # 单次结算最长回溯时长（小时）
   rate-percent: 100    # 基础速度折扣（保守可设 50~70）
   min-seconds: 180     # 低于此闲置秒数不结算
+  # 离线闲置期间是否燃烧限时燃料。默认 false：离线只吃基础速度（无加速加成），
+  # 烧燃料等于让玩家白烧——要么离线也吃加速（Hypixel 口径），要么燃料留给在线时间。
+  # 置 true = 燃料离线照常燃烧且照常提供加速（经济上更接近原版，但离线收益更高）
+  burn-fuel-offline: false
 
 database:
   type: sqlite               # sqlite | mysql
@@ -61,6 +65,7 @@ database:
   user: root
   password: ""
   pool-size: 4              # HikariCP 连接池，小池避免虚拟线程被固定
+  use-ssl: false            # 仅 MySQL：true 时要求服务端证书可信（内网/自签证书保持 false）
 
 economy:
   enabled: true             # 需要 Vault
@@ -97,6 +102,8 @@ collections:
 #   upgrade-recipe-at.'12'   终阶覆盖行：整行替代该级配方（附魔资源大额 + 稀有掉落回流）
 #   rare-drop / rare-drop-chance  专属稀有掉落（Hypixel 兴奋点）
 #   unlock-amount    收集解锁阈值（product 计数）
+#   unlock-cost      解锁金币门槛（可选，0/省略=不收费）：收集达标后首次放置时缴纳一次，
+#                    每玩家每类型只收一次；无 Vault 时不收费；管理员豁免
 #   cooldown-ticks   逐级动作间隔表（对齐 Hypixel 曲线）
 # 配方材料写法（三种，见 ItemRef）：
 #   1) 原版物品：COAL: 48（大写 Material 名）
@@ -1288,3 +1295,402 @@ types:
         GOLD_NUGGET: 384
         'enchanted:gold_nugget': 6
         CROSSBOW: 8
+# ============================================================
+#  燃料表（Hypixel 式双轴制，配置驱动；删段则回退内置默认）
+# ------------------------------------------------------------
+#  两种轴：
+#    速度轴  boost-percent    —— 缩短动作间隔（1.0 = 无加成）
+#    产量轴  multiplier       —— 产出数量翻倍（>1 时优先于 boost，即「催化剂」）
+#  字段：
+#    material         原版物品（必填）
+#    duration-seconds 持续秒数（permanent: true 时省略）
+#    boost-percent    速度加成百分比（催化剂省略/0）
+#    multiplier       产量倍率（催化剂轴）
+#    returns-empty    桶装燃料消耗后返还的空容器（可选）
+#    permanent        true = 永久燃料，不随时间衰减（可选）
+# ============================================================
+fuels:
+  # ---- 基础燃料（速度轴）----
+  - material: COAL
+    duration-seconds: 180
+    boost-percent: 5
+  - material: CHARCOAL
+    duration-seconds: 180
+    boost-percent: 5
+  - material: COAL_BLOCK
+    duration-seconds: 900
+    boost-percent: 5
+  # ---- 高级燃料（速度轴）----
+  - material: LAVA_BUCKET
+    duration-seconds: 3600
+    boost-percent: 25
+    returns-empty: BUCKET
+  - material: BLAZE_ROD
+    duration-seconds: 1080
+    boost-percent: 30
+  # ---- 永久燃料（不衰减）----
+  - material: MAGMA_CREAM
+    permanent: true
+    boost-percent: 30
+  - material: GLOWSTONE_DUST
+    permanent: true
+    boost-percent: 35
+  - material: DAYLIGHT_DETECTOR
+    permanent: true
+    boost-percent: 25
+  # ---- 催化剂（产量轴：不加速度，翻倍产出）----
+  - material: AMETHYST_SHARD
+    duration-seconds: 1800
+    multiplier: 1.5
+  - material: BLAZE_POWDER
+    duration-seconds: 900
+    multiplier: 2.0
+  - material: PHANTOM_MEMBRANE
+    duration-seconds: 480
+    multiplier: 3.0
+
+# ============================================================
+#  附魔资源催化剂（沉淀在 collection 经济里的高阶催化剂）
+# ------------------------------------------------------------
+#  对齐 Hypixel 的「附魔面包/干草捆」：催化剂由 160:1 压缩经济产出，
+#  把仆从消耗和资源收集闭环咬合在一起。key 必须是 enchanted-resources 里已注册的项。
+# ============================================================
+enchanted-fuels:
+  - resource: wheat        # 附魔小麦
+    duration-seconds: 1800
+    multiplier: 1.5
+  - resource: carrot       # 附魔胡萝卜
+    duration-seconds: 900
+    multiplier: 2.0
+  - resource: melon        # 附魔西瓜
+    duration-seconds: 480
+    multiplier: 3.0
+
+# ============================================================
+#  自动熔炼映射（「自动熔炼」模块：输入物料 -> 熔炼产物）
+# ------------------------------------------------------------
+#  删段则回退内置默认（矿石/原矿/沙子 -> 锭/玻璃）
+# ============================================================
+auto-smelt:
+  COAL_ORE: COAL
+  DEEPSLATE_COAL_ORE: COAL
+  IRON_ORE: IRON_INGOT
+  DEEPSLATE_IRON_ORE: IRON_INGOT
+  COPPER_ORE: COPPER_INGOT
+  DEEPSLATE_COPPER_ORE: COPPER_INGOT
+  GOLD_ORE: GOLD_INGOT
+  DEEPSLATE_GOLD_ORE: GOLD_INGOT
+  DIAMOND_ORE: DIAMOND
+  DEEPSLATE_DIAMOND_ORE: DIAMOND
+  EMERALD_ORE: EMERALD
+  DEEPSLATE_EMERALD_ORE: EMERALD
+  REDSTONE_ORE: REDSTONE
+  DEEPSLATE_REDSTONE_ORE: REDSTONE
+  LAPIS_ORE: LAPIS_LAZULI
+  DEEPSLATE_LAPIS_ORE: LAPIS_LAZULI
+  NETHER_GOLD_ORE: GOLD_NUGGET
+  # 模拟采集的产物是「原矿」形态（RAW_*），不是矿石方块
+  RAW_IRON: IRON_INGOT
+  RAW_COPPER: COPPER_INGOT
+  RAW_GOLD: GOLD_INGOT
+  SAND: GLASS
+  RED_SAND: GLASS
+
+# ============================================================
+#  自动压缩映射（「自动压缩」模块：散装 -> 方块形态）
+# ------------------------------------------------------------
+#  ratio 为压缩比（默认 9:1）；「超级压缩 3000」模块走附魔资源 ratio（不读这里）
+# ============================================================
+compaction:
+  ratio: 9
+  map:
+    COAL: COAL_BLOCK
+    IRON_INGOT: IRON_BLOCK
+    COPPER_INGOT: COPPER_BLOCK
+    GOLD_INGOT: GOLD_BLOCK
+    DIAMOND: DIAMOND_BLOCK
+    EMERALD: EMERALD_BLOCK
+    REDSTONE: REDSTONE_BLOCK
+    LAPIS_LAZULI: LAPIS_BLOCK
+    RAW_IRON: RAW_IRON_BLOCK
+    RAW_GOLD: RAW_GOLD_BLOCK
+    RAW_COPPER: RAW_COPPER_BLOCK
+    WHEAT: HAY_BLOCK
+    MELON_SLICE: MELON
+    SNOWBALL: SNOW_BLOCK
+    SLIME_BALL: SLIME_BLOCK
+    CLAY_BALL: CLAY
+    NETHERITE_INGOT: NETHERITE_BLOCK
+    IRON_NUGGET: IRON_INGOT
+    GOLD_NUGGET: GOLD_INGOT
+
+# ============================================================
+#  伐木补种映射（伐木工砍完整棵树后在树根补种）
+# ------------------------------------------------------------
+#  删段则回退内置默认（原木 -> 树苗；下界菌柄 -> 真菌）
+# ============================================================
+saplings:
+  OAK_LOG: OAK_SAPLING
+  SPRUCE_LOG: SPRUCE_SAPLING
+  BIRCH_LOG: BIRCH_SAPLING
+  JUNGLE_LOG: JUNGLE_SAPLING
+  ACACIA_LOG: ACACIA_SAPLING
+  DARK_OAK_LOG: DARK_OAK_SAPLING
+  MANGROVE_LOG: MANGROVE_PROPAGULE
+  CHERRY_LOG: CHERRY_SAPLING
+  CRIMSON_STEM: CRIMSON_FUNGUS
+  WARPED_STEM: WARPED_FUNGUS
+
+# ============================================================
+#  附魔资源注册表（Hypixel 式浓缩材料，配置驱动）
+# ------------------------------------------------------------
+#  ratio = 压缩比（1 个附魔资源 = ratio 个基底物品；末影珍珠 32:1）
+#  配方里用 'enchanted:<key>' 引用；「超级压缩 3000」模块按 ratio 压缩。
+#  删段则回退内置默认（与本段内容一致）
+# ============================================================
+enchanted-resources:
+  - key: coal
+    name: "附魔煤炭"
+    base: COAL
+    ratio: 160
+  - key: iron
+    name: "附魔铁锭"
+    base: IRON_INGOT
+    ratio: 160
+  - key: copper
+    name: "附魔铜锭"
+    base: COPPER_INGOT
+    ratio: 160
+  - key: gold
+    name: "附魔金锭"
+    base: GOLD_INGOT
+    ratio: 160
+  - key: redstone
+    name: "附魔红石"
+    base: REDSTONE
+    ratio: 160
+  - key: lapis
+    name: "附魔青金石"
+    base: LAPIS_LAZULI
+    ratio: 160
+  - key: diamond
+    name: "附魔钻石"
+    base: DIAMOND
+    ratio: 160
+  - key: emerald
+    name: "附魔绿宝石"
+    base: EMERALD
+    ratio: 160
+  - key: quartz
+    name: "附魔石英"
+    base: QUARTZ
+    ratio: 160
+  - key: obsidian
+    name: "附魔黑曜石"
+    base: OBSIDIAN
+    ratio: 160
+  - key: cobblestone
+    name: "附魔圆石"
+    base: COBBLESTONE
+    ratio: 160
+  - key: ice
+    name: "附魔冰"
+    base: ICE
+    ratio: 160
+  - key: snowball
+    name: "附魔雪球"
+    base: SNOWBALL
+    ratio: 160
+  - key: clay
+    name: "附魔黏土球"
+    base: CLAY_BALL
+    ratio: 160
+  - key: gravel
+    name: "附魔沙砾"
+    base: GRAVEL
+    ratio: 160
+  - key: sand
+    name: "附魔沙子"
+    base: SAND
+    ratio: 160
+  - key: gold_nugget
+    name: "附魔金粒"
+    base: GOLD_NUGGET
+    ratio: 160
+  - key: wheat
+    name: "附魔小麦"
+    base: WHEAT
+    ratio: 160
+  - key: carrot
+    name: "附魔胡萝卜"
+    base: CARROT
+    ratio: 160
+  - key: potato
+    name: "附魔马铃薯"
+    base: POTATO
+    ratio: 160
+  - key: pumpkin
+    name: "附魔南瓜"
+    base: PUMPKIN
+    ratio: 160
+  - key: melon
+    name: "附魔西瓜"
+    base: MELON_SLICE
+    ratio: 160
+  - key: beetroot
+    name: "附魔甜菜"
+    base: BEETROOT
+    ratio: 160
+  - key: cocoa
+    name: "附魔可可豆"
+    base: COCOA_BEANS
+    ratio: 160
+  - key: nether_wart
+    name: "附魔下界疣"
+    base: NETHER_WART
+    ratio: 160
+  - key: sugar_cane
+    name: "附魔甘蔗"
+    base: SUGAR_CANE
+    ratio: 160
+  - key: cactus
+    name: "附魔仙人掌"
+    base: CACTUS
+    ratio: 160
+  - key: poppy
+    name: "附魔花卉"
+    base: POPPY
+    ratio: 160
+  - key: red_mushroom
+    name: "附魔蘑菇"
+    base: RED_MUSHROOM
+    ratio: 160
+  - key: honeycomb
+    name: "附魔蜂巢"
+    base: HONEYCOMB
+    ratio: 160
+  - key: oak_log
+    name: "附魔橡木"
+    base: OAK_LOG
+    ratio: 160
+  - key: birch_log
+    name: "附魔白桦木"
+    base: BIRCH_LOG
+    ratio: 160
+  - key: spruce_log
+    name: "附魔云杉木"
+    base: SPRUCE_LOG
+    ratio: 160
+  - key: jungle_log
+    name: "附魔丛林木"
+    base: JUNGLE_LOG
+    ratio: 160
+  - key: acacia_log
+    name: "附魔金合欢木"
+    base: ACACIA_LOG
+    ratio: 160
+  - key: dark_oak_log
+    name: "附魔深色橡木"
+    base: DARK_OAK_LOG
+    ratio: 160
+  - key: cherry_log
+    name: "附魔樱花木"
+    base: CHERRY_LOG
+    ratio: 160
+  - key: mangrove_log
+    name: "附魔红树木"
+    base: MANGROVE_LOG
+    ratio: 160
+  - key: crimson_stem
+    name: "附魔绯红菌柄"
+    base: CRIMSON_STEM
+    ratio: 160
+  - key: warped_stem
+    name: "附魔诡异菌柄"
+    base: WARPED_STEM
+    ratio: 160
+  - key: cod
+    name: "附魔鳕鱼"
+    base: COD
+    ratio: 160
+  - key: rotten_flesh
+    name: "附魔腐肉"
+    base: ROTTEN_FLESH
+    ratio: 160
+  - key: bone
+    name: "附魔骨头"
+    base: BONE
+    ratio: 160
+  - key: gunpowder
+    name: "附魔火药"
+    base: GUNPOWDER
+    ratio: 160
+  - key: string
+    name: "附魔线"
+    base: STRING
+    ratio: 160
+  - key: ender_pearl
+    name: "附魔末影珍珠"
+    base: ENDER_PEARL
+    ratio: 32
+  - key: blaze_rod
+    name: "附魔烈焰棒"
+    base: BLAZE_ROD
+    ratio: 160
+  - key: slimeball
+    name: "附魔黏液球"
+    base: SLIME_BALL
+    ratio: 160
+  - key: magma_cream
+    name: "附魔岩浆膏"
+    base: MAGMA_CREAM
+    ratio: 160
+  - key: beef
+    name: "附魔牛肉"
+    base: BEEF
+    ratio: 160
+  - key: mutton
+    name: "附魔羊肉"
+    base: MUTTON
+    ratio: 160
+  - key: chicken
+    name: "附魔鸡肉"
+    base: CHICKEN
+    ratio: 160
+  - key: pork
+    name: "附魔猪排"
+    base: PORKCHOP
+    ratio: 160
+  - key: rabbit
+    name: "附魔兔肉"
+    base: RABBIT
+    ratio: 160
+  - key: leather
+    name: "附魔皮革"
+    base: LEATHER
+    ratio: 160
+
+# ============================================================
+#  事件音效音量（Hypixel 式反馈闭环；单项 0 = 关闭，删段回退内置默认）
+# ------------------------------------------------------------
+#  place       放置仆从
+#  pickup      拾取仆从
+#  harvest     仆从完成一次工作（仅播放给正在看该仆从 GUI 的玩家——满岛几十个
+#              仆从同时收割时不变成噪音，但盯着界面时那声轻响是"活着"的关键反馈）
+#  milestone   收集里程碑达成
+#  sell        自动售卖入账
+#  click       GUI 按钮点击/轻确认
+#  module      装备/卸下模块
+#  fuel-out    限时燃料耗尽
+#  unlock      缴纳解锁金币
+# ============================================================
+sounds:
+  place: 1.0
+  pickup: 1.0
+  harvest: 0.35
+  milestone: 1.0
+  sell: 0.5
+  click: 0.6
+  module: 1.0
+  fuel-out: 0.8
+  unlock: 0.9

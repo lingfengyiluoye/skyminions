@@ -6,6 +6,8 @@ import com.hcs.minions.model.Minion;
 import com.hcs.minions.util.AsyncExecutor;
 import com.hcs.minions.util.EnchantedResource;
 import com.hcs.minions.util.Logs;
+import com.hcs.minions.util.Messages;
+import com.hcs.minions.util.PlayerTasks;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.inventory.ItemStack;
@@ -106,6 +108,7 @@ public final class SellService {
                 return;
             }
             // 先扣物（region 线程原子执行：取走后才加款）
+            final long soldUnits = totalUnits;
             minion.removeItems(items);
             // 扣物成功后异步加款；失败时回到仆从所在 region 尝试恢复原物品。
             try {
@@ -125,6 +128,11 @@ public final class SellService {
                 }
                 gate.set(false);
                 result.complete(amount);
+                // 售卖反馈：Hypixel 的 auto-sell 每次都有明确提示，玩家据此判断要不要继续挂机
+                PlayerTasks.run(plugin, minion.owner(), owner -> {
+                    owner.sendMessage(Messages.sold(soldUnits, formatCoins(amount)));
+                    com.hcs.minions.util.Sounds.sell(owner);
+                });
                 });
             } catch (RuntimeException ex) {
                 Logs.error("提交售卖入账任务失败，正在恢复已扣物品 owner={} amount={}", minion.owner(), amount, ex);
@@ -150,5 +158,11 @@ public final class SellService {
         for (ItemStack leftover : leftovers.values()) {
             world.dropItemNaturally(center.clone().add(0.5, 1.0, 0.5), leftover);
         }
+    }
+
+    /** 分 -> 可读金币串（整数部分不带多余小数）。 */
+    private static String formatCoins(long cents) {
+        double coins = cents / 100.0;
+        return coins == Math.floor(coins) ? String.valueOf((long) coins) : String.format("%.2f", coins);
     }
 }

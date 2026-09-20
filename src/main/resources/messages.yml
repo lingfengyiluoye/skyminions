@@ -60,6 +60,22 @@ stats-header: "<gold><bold>▼ SkyMinions 运行统计</bold></gold>"
 stats-line: "<gray>· {0}</gray>"
 config-reloaded: "<green>✔ 配置与文案已重新加载</green>"
 purged: "<green>✔ 已清理 {0} 个残留仆从实体</green>"
+purged-scheduled: "<green>✔ 正在清理 {0} 个残留仆从实体（实体移除按所在区域线程调度，稍后完成）</green>"
+# 运行统计逐行（/minion stats）
+stats-uptime: "<gray>运行时长</gray><white>: {0}</white>"
+stats-cycles: "<gray>调度周期数</gray><white>: {0}</white>"
+stats-permissions: "<gray>已注册权限节点</gray><white>: {0} 个（minions.*）</white>"
+stats-placed: "<gray>已放置仆从</gray><white>: {0} 个（工作中 {1}）</white>"
+stats-rare-drops: "<gray>稀有掉落累计</gray><white>: {0} 次</white>"
+stats-total-produced: "<gray>全场累计产出</gray><white>: {0} 件</white>"
+# GUI / 交互兜底提示
+loading: "<gray>仆从系统正在加载，请稍后再试</gray>"
+type-config-missing: "<red>✖ 该仆从类型配置已失效，请联系管理员</red>"
+pickup-failed: "<red>✖ 拾取失败：物品生成异常，详情见控制台日志</red>"
+craft-incomplete: "<red>✖ 材料未集齐，还差 {0}</red>"
+craft-extra-items: "<gray>合成格内存在多余物品</gray>"
+# 实体名牌：头顶「满仓停工」后缀（⚠ 图标由代码拼接）
+plate-halted-suffix: " <red>⚠仓库已满</red>"
 available-skins: "<gray>可用皮肤</gray><white>: {0}</white>"
 skin-tip: "<gray>在仆从 GUI 中点击 <light_purple>皮肤</light_purple> 按钮切换</gray>"
 

@@ -2,6 +2,7 @@ package com.hcs.minions.work.fisher;
 
 import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.work.ChunkGuard;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -32,12 +33,17 @@ public final class FisherStrategy implements MinionWorkStrategy {
     public boolean canWork(WorkContext ctx) {
         // 轻量检查：anchor 周围立体范围是否有水（不推进搜索游标）。
         // 水平半径取 ctx.radius()（含范围扩展模块，与其他策略同口径），下限 2 保证 5x5 基线；
-        // 高度含 -1..+1：仆从常被放在比水面高一格的岸边，只查同层会判为无水不工作
+        // 高度含 -1..+1：仆从常被放在比水面高一格的岸边，只查同层会判为无水不工作。
+        // 未加载列跳过，避免 Folia 下跨区块读取触发同步加载
         Block anchor = ctx.anchor();
         int r = Math.max(2, ctx.radius());
+        boolean[][] loaded = ChunkGuard.loaded(ctx.world(), anchor, r);
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dz = -r; dz <= r; dz++) {
+                    if (!ChunkGuard.isLoaded(loaded, dx, dz, r)) {
+                        continue;
+                    }
                     if (anchor.getRelative(dx, dy, dz).getType() == Material.WATER) {
                         return true;
                     }

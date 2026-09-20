@@ -6,11 +6,9 @@ import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
 import com.hcs.minions.upgrade.MinionUpgradeType;
+import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemCodec;
 import com.hcs.minions.util.Roman;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
@@ -20,6 +18,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,13 +67,12 @@ public final class MinionItemService {
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta meta = item.getItemMeta();
         // 去斜体：Paper 客户端对未显式设置 ITALIC 的物品名/Lore 按原版默认斜体渲染
-        // Tier 用罗马数字（对齐 Hypixel：Coal Minion IV）
-        meta.displayName(Component.text(cfg.displayName() + " " + Roman.of(level), NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(List.of(
-                Component.text("右键方块放置仆从", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                Component.text(cfg.displayName(), NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)
-        ));
+        // Tier 用罗马数字（对齐 Hypixel：Coal Minion IV）；文案来自 gui.yml
+        Map<String, String> v = Map.of(
+                "name", cfg.displayName(),
+                "tier", Roman.of(level));
+        meta.displayName(GuiText.title("minion-item.title", v));
+        meta.lore(GuiText.lore("minion-item.lore", v));
         meta.getPersistentDataContainer().set(typeKey, PersistentDataType.STRING, type.key());
         meta.getPersistentDataContainer().set(levelKey, PersistentDataType.INTEGER, level);
         meta.getPersistentDataContainer().set(fuelKey, PersistentDataType.LONG, cfg.baseFuelTicks());

@@ -70,6 +70,10 @@ public final class Messages {
     public static Component FUEL_STATUS_NONE;
     public static Component MATERIALS_GUIDE_FAILED;
     public static Component MATERIALS_OVERVIEW_FAILED;
+    public static Component LOADING;
+    public static Component TYPE_CONFIG_MISSING;
+    public static Component PICKUP_FAILED;
+    public static Component CRAFT_EXTRA_ITEMS;
 
     // ------------------------------------------------------------------
     // 加载
@@ -106,6 +110,12 @@ public final class Messages {
         DEFAULTS.put("upgrade-slot-empty", "<gray>该模块槽是空的</gray>");
         DEFAULTS.put("auto-sell-toggled", "<green>✔ 自动出售已{0}</green>");
         DEFAULTS.put("upgrade-duplicate", "<red>✖ 已装备相同模块</red>\n<gray><aqua>{0}</aqua> 不能重复装备到多个槽</gray>");
+        DEFAULTS.put("upgrade-not-applicable",
+                "<red>✖ 该模块不适用于此仆从</red>\n<gray><aqua>{0}</aqua> 只能用于 <yellow>{1}</yellow> 类仆从（对齐原版口径）</gray>");
+        DEFAULTS.put("unlock-cost-required",
+                "<red>✖ 解锁该仆从类型需要 {0} 金币</red>\n<gray>收集 <white>{1}</white> 达到 <yellow>{2}</yellow> 后缴纳 {0} 金币即可放置</gray>");
+        DEFAULTS.put("unlock-cost-charged",
+                "<green>✔ 已缴纳 {0} 金币</green>\n<gray>{1} 类型已解锁（仅收取一次）</gray>");
         DEFAULTS.put("upgrade-equipped", "<green>✔ 已装备模块</green>\n<aqua>{0}</aqua>");
         DEFAULTS.put("upgrade-removed", "<green>✔ 已卸下模块</green>\n<aqua>{0}</aqua> 已返还到背包");
         DEFAULTS.put("skin-changed", "<light_purple>✔ 皮肤已切换</light_purple>\n<light_purple>{0}</light_purple>");
@@ -125,6 +135,22 @@ public final class Messages {
         DEFAULTS.put("stats-line", "<gray>· {0}</gray>");
         DEFAULTS.put("config-reloaded", "<green>✔ 配置与文案已重新加载</green>");
         DEFAULTS.put("purged", "<green>✔ 已清理 {0} 个残留仆从实体</green>");
+        DEFAULTS.put("purged-scheduled", "<green>✔ 正在清理 {0} 个残留仆从实体（实体移除按所在区域线程调度，稍后完成）</green>");
+        // ---- 运行统计（/minion stats，逐行模板） ----
+        DEFAULTS.put("stats-uptime", "<gray>运行时长</gray><white>: {0}</white>");
+        DEFAULTS.put("stats-cycles", "<gray>调度周期数</gray><white>: {0}</white>");
+        DEFAULTS.put("stats-permissions", "<gray>已注册权限节点</gray><white>: {0} 个（minions.*）</white>");
+        DEFAULTS.put("stats-placed", "<gray>已放置仆从</gray><white>: {0} 个（工作中 {1}）</white>");
+        DEFAULTS.put("stats-rare-drops", "<gray>稀有掉落累计</gray><white>: {0} 次</white>");
+        DEFAULTS.put("stats-total-produced", "<gray>全场累计产出</gray><white>: {0} 件</white>");
+        // ---- GUI/交互兜底提示（原为硬编码，统一走模板） ----
+        DEFAULTS.put("loading", "<gray>仆从系统正在加载，请稍后再试</gray>");
+        DEFAULTS.put("type-config-missing", "<red>✖ 该仆从类型配置已失效，请联系管理员</red>");
+        DEFAULTS.put("pickup-failed", "<red>✖ 拾取失败：物品生成异常，详情见控制台日志</red>");
+        DEFAULTS.put("craft-extra-items", "<gray>合成格内存在多余物品</gray>");
+        DEFAULTS.put("craft-incomplete", "<red>✖ 材料未集齐，还差 {0}</red>");
+        // ---- 实体名牌（头顶状态后缀） ----
+        DEFAULTS.put("plate-halted-suffix", " <red>⚠仓库已满</red>");
         DEFAULTS.put("available-skins", "<gray>可用皮肤</gray><white>: {0}</white>");
         DEFAULTS.put("skin-tip", "<gray>在仆从 GUI 中点击 <light_purple>皮肤</light_purple> 按钮切换</gray>");
         DEFAULTS.put("collection-entry", "<white>{0}</white> <gray>x</gray> <yellow>{1}</yellow>");
@@ -133,6 +159,8 @@ public final class Messages {
         DEFAULTS.put("milestone-reached", "<green>✔ 资源累计里程碑达成！</green>\n<white>{0}</white> <gray>累计</gray> <yellow>{1}</yellow>\n<gray>奖励 <gold>{2} 金币</gold></gray>");
         DEFAULTS.put("milestone-slot-bonus", "<gray>，仆从槽位 <yellow>+1</yellow></gray>");
         DEFAULTS.put("rare-drop", "<gold>✦ 你的{0}获得了稀有掉落</gold> <light_purple>{1}</light_purple>");
+        // 自动售卖反馈（Hypixel 的 auto-sell 每次都有明确提示，玩家据此判断要不要继续挂）
+        DEFAULTS.put("sold", "<green>✔ 自动售出 {0} 件</green> <gray>获得</gray> <gold>{1} 金币</gold>");
         DEFAULTS.put("unlock-required", "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>");
         DEFAULTS.put("offline-header", "<gold><bold>▲ 离线收获 · {0}</bold></gold>");
         DEFAULTS.put("offline-detail", "<dark_gray>· {0} <yellow>×{1}</yellow></dark_gray>");
@@ -188,6 +216,10 @@ public final class Messages {
         USAGE_MATERIALS = render("usage-materials");
         LEVEL_MUST_BE_NUMBER = render("level-must-be-number");
         SKIN_TIP = render("skin-tip");
+        LOADING = render("loading");
+        TYPE_CONFIG_MISSING = render("type-config-missing");
+        PICKUP_FAILED = render("pickup-failed");
+        CRAFT_EXTRA_ITEMS = render("craft-extra-items");
         FUEL_HELP_HEADER = render("fuel-help-header");
         FUEL_HELP_TIP = render("fuel-help-tip");
         FUEL_STATUS_NONE = render("fuel-status-none");
@@ -239,6 +271,21 @@ public final class Messages {
         return render("upgrade-duplicate", name);
     }
 
+    /** 模块与仆从类型不匹配（{0}=模块名 {1}=适用行为中文名）。 */
+    public static Component upgradeNotApplicable(String name, String behaviors) {
+        return render("upgrade-not-applicable", name, behaviors);
+    }
+
+    /** 解锁需缴纳金币（{0}=金额 {1}=产物名 {2}=需求量）。 */
+    public static Component unlockCostRequired(String cost, String product, String need) {
+        return render("unlock-cost-required", cost, product, need);
+    }
+
+    /** 已缴纳解锁金币（{0}=金额 {1}=类型名）。 */
+    public static Component unlockCostCharged(String cost, String typeName) {
+        return render("unlock-cost-charged", cost, typeName);
+    }
+
     public static Component skinChanged(String name) {
         return render("skin-changed", name);
     }
@@ -281,6 +328,69 @@ public final class Messages {
 
     public static Component purged(int count) {
         return render("purged", count);
+    }
+
+    /** 实体清理为异步调度（region 线程）时的提示。 */
+    public static Component purgedScheduled(int count) {
+        return render("purged-scheduled", count);
+    }
+
+    // ---- 运行统计 ----
+
+    public static Component statsUptime(String uptime) {
+        return render("stats-uptime", uptime);
+    }
+
+    public static Component statsCycles(long cycles) {
+        return render("stats-cycles", cycles);
+    }
+
+    public static Component statsPermissions(long nodes) {
+        return render("stats-permissions", nodes);
+    }
+
+    public static Component statsPlaced(int placed, int working) {
+        return render("stats-placed", placed, working);
+    }
+
+    public static Component statsRareDrops(long drops) {
+        return render("stats-rare-drops", drops);
+    }
+
+    public static Component statsTotalProduced(long total) {
+        return render("stats-total-produced", total);
+    }
+
+    // ---- GUI/交互兜底提示 ----
+
+    public static Component loading() {
+        return render("loading");
+    }
+
+    public static Component typeConfigMissing() {
+        return render("type-config-missing");
+    }
+
+    public static Component pickupFailed() {
+        return render("pickup-failed");
+    }
+
+    public static Component craftExtraItems() {
+        return render("craft-extra-items");
+    }
+
+    public static Component craftIncomplete(String missing) {
+        return render("craft-incomplete", missing);
+    }
+
+    /** 头顶名牌「满仓停工」后缀（⚠仓库已满）。 */
+    public static Component plateHaltedSuffix() {
+        return render("plate-halted-suffix");
+    }
+
+    /** 自动售卖反馈（{0}=件数 {1}=金币）。 */
+    public static Component sold(long units, String coins) {
+        return render("sold", units, coins);
     }
 
     /** 运行统计标题（/minion stats）。 */

@@ -21,7 +21,9 @@ public class MinionCollectEvent extends Event {
     public MinionCollectEvent(Minion minion, Player player, List<ItemStack> collected) {
         this.minion = minion;
         this.player = player;
-        this.collected = collected;
+        // 防御性拷贝：调用方（GUI）在事件后还会继续使用原列表，
+        // 监听器不得通过改这个列表反向影响收取流程（对齐 WorkOutcome 的口径）
+        this.collected = List.copyOf(collected);
     }
 
     public Minion minion() {

@@ -7,6 +7,7 @@ import com.hcs.minions.model.MinionCategory;
 import com.hcs.minions.model.MinionType;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.MinionItemService;
+import com.hcs.minions.util.Sounds;
 import com.hcs.minions.util.GuiLayout;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -64,20 +65,29 @@ public final class CollectionGuiListener implements Listener {
             player.closeInventory();
             return;
         }
+        // 界面切换统一「先关旧界面再开新界面」，避免同 tick 内 openInventory 竞态
         if (slot == GuiLayout.slot("collection.all.slot")) {
+            player.closeInventory();
+            Sounds.click(player);
             gui.open(player, null, 0);
             return;
         }
         Map<Integer, MinionCategory> filters = filterSlots();
         if (filters.containsKey(slot)) {
+            player.closeInventory();
+            Sounds.click(player);
             gui.open(player, filters.get(slot), 0);
             return;
         }
         if (slot == GuiLayout.slot("collection.prev.slot")) {
+            player.closeInventory();
+            Sounds.click(player);
             gui.open(player, holder.filter(), holder.page() - 1);
             return;
         }
         if (slot == GuiLayout.slot("collection.next.slot")) {
+            player.closeInventory();
+            Sounds.click(player);
             gui.open(player, holder.filter(), holder.page() + 1);
             return;
         }
@@ -137,6 +147,7 @@ public final class CollectionGuiListener implements Listener {
         if (cfg != null) {
             Minion target = lowestLevelMinionOf(player.getUniqueId(), type);
             if (target != null && target.level() < cfg.maxLevel()) {
+                player.closeInventory(); // 先关图鉴再开合成台，避免同 tick 双开界面
                 UpgradeCraftGui.open(player, target, items, config);
                 return;
             }

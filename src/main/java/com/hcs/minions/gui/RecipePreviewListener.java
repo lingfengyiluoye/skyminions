@@ -1,5 +1,6 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.util.Sounds;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -39,12 +40,12 @@ public final class RecipePreviewListener implements Listener {
             return;
         }
         if (slot == RecipePreviewGui.prevSlot()) {
-            player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.5f, 1.2f);
+            Sounds.click(player);
             open(player, holder, holder.index() - 1);
             return;
         }
         if (slot == RecipePreviewGui.nextSlot()) {
-            player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.5f, 1.2f);
+            Sounds.click(player);
             open(player, holder, holder.index() + 1);
         }
     }

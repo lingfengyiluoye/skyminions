@@ -1,5 +1,6 @@
 package com.hcs.minions.gui;
 
+import com.hcs.minions.util.Sounds;
 import com.hcs.minions.util.ItemRef;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -51,9 +52,10 @@ public final class GuideListListener implements Listener {
         ItemRef ref = holder.entries().get(idx).getKey();
         // 附魔资源：打开专属压缩预览（N 个基础物品 → 1 个附魔资源，可当场手动压缩）
         if (ref instanceof ItemRef.EnchantedRef er) {
-            player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+            Sounds.click(player);
             player.closeInventory();
-            com.hcs.minions.gui.UpgradeMaterialsGui.openDetail(player, er.resource());
+            // 来源为材料指南（非总览页），返回总览时固定回第 1 页
+            com.hcs.minions.gui.UpgradeMaterialsGui.openDetail(player, er.resource(), 0);
             return;
         }
         Material mat = ref.guideMaterial();
@@ -69,7 +71,7 @@ public final class GuideListListener implements Listener {
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.4f, 0.8f);
             return;
         }
-        player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+        Sounds.click(player);
         player.closeInventory();
         RecipePreviewGui.open(player, previewMaterials, previewIndex);
     }

@@ -11,7 +11,8 @@ public record DatabaseConfig(
         String database,
         String user,
         String password,
-        int poolSize
+        int poolSize,
+        boolean useSsl
 ) {
 
     public DatabaseConfig {

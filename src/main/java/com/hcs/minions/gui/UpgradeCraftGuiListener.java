@@ -7,7 +7,9 @@ import com.hcs.minions.model.Minion;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.service.hook.SkyblockHook;
+import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.Messages;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -20,6 +22,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 升级合成 GUI 交互：合成格自由取放（材料来自玩家背包），材料齐后点击结果槽
@@ -53,6 +56,8 @@ public final class UpgradeCraftGuiListener implements Listener {
         }
         Minion minion = manager.minion(holder.minionId());
         if (minion == null) {
+            // 先取消再关闭（与仆从 GUI 同一口径），避免极端竞态下物品被吞
+            event.setCancelled(true);
             player.closeInventory();
             return;
         }
@@ -131,13 +136,20 @@ public final class UpgradeCraftGuiListener implements Listener {
             return;
         }
         Inventory inv = event.getInventory();
+        boolean touchesTop = false;
         for (int raw : event.getRawSlots()) {
-            if (raw < inv.getSize() && !UpgradeCraftGui.isGridSlot(raw)) {
-                event.setCancelled(true);
-                return;
+            if (raw < inv.getSize()) {
+                if (!UpgradeCraftGui.isGridSlot(raw)) {
+                    event.setCancelled(true);
+                    return;
+                }
+                touchesTop = true;
             }
         }
-        scheduleRefresh(inv, minion);
+        // 仅当拖拽涉及合成格时才需要刷新结果槽；只在背包区内部挪动不排任务
+        if (touchesTop) {
+            scheduleRefresh(inv, minion);
+        }
     }
 
     @EventHandler
@@ -160,9 +172,11 @@ public final class UpgradeCraftGuiListener implements Listener {
         }
         UpgradeCraftGui.CraftCheck check = UpgradeCraftGui.validate(inv, minion, items, cfg, config);
         if (!check.complete()) {
-            com.hcs.minions.util.Fx.deny(player,
-                    "<red>材料未集齐，还差 " + formatMissing(check) + "</red>");
-            player.sendMessage(Messages.upgradeFailed(formatMissing(check)));
+            String missing = formatMissing(check);
+            // ActionBar 用纯文本组件（材料名可能来自 CraftEngine，避免被当 MiniMessage 解析）；
+            // 完整提示走 messages.yml 的 craft-incomplete 模板
+            com.hcs.minions.util.Fx.deny(player, Component.text(missing));
+            player.sendMessage(Messages.craftIncomplete(missing));
             return;
         }
         UpgradeCraftGui.clearGrid(inv);
@@ -171,7 +185,11 @@ public final class UpgradeCraftGuiListener implements Listener {
         minion.refresh(cfg, config.get().upgradeRequirePreviousBody());
         manager.save(minion);
         player.sendMessage(Messages.upgradeSuccess(minion.level()));
-        com.hcs.minions.util.Fx.title(player, "<gold>✔ 升级成功</gold>", "<gray>当前 等级 " + minion.level() + "</gray>");
+        // Title 高光文案走 gui.yml 模板（craft-gui.success.*）
+        com.hcs.minions.util.Fx.title(player,
+                GuiText.title("craft-gui.success.title"),
+                GuiText.title("craft-gui.success.subtitle",
+                        Map.of("tier", String.valueOf(minion.level()))));
         // 点击事件中直接开新界面可能不被客户端接受：先关闭，下一 tick 重开仆从界面
         // （onClose 时合成格已清空，不会误归还）。使用 RegionScheduler 保持 Folia 兼容
         player.closeInventory();
@@ -187,18 +205,20 @@ public final class UpgradeCraftGuiListener implements Listener {
         StringBuilder sb = new StringBuilder();
         for (var e : check.missing().entrySet()) {
             if (sb.length() > 0) {
-                sb.append("、");
+                sb.append('、');
             }
             sb.append(e.getKey().displayName()).append(" ×").append(e.getValue());
         }
         if (check.bodyMissing()) {
             if (sb.length() > 0) {
-                sb.append("、");
+                sb.append('、');
             }
             sb.append("仆从本体 ×1");
         }
         if (sb.length() == 0) {
-            sb.append("格内存在多余物品");
+            // 文案来自 messages.yml（craft-extra-items），不硬编码
+            return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+                    .plainText().serialize(Messages.craftExtraItems());
         }
         return sb.toString();
     }

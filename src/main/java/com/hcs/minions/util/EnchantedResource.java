@@ -1,8 +1,5 @@
 package com.hcs.minions.util;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.enchantments.Enchantment;
@@ -57,9 +54,64 @@ public final class EnchantedResource {
     /** 组合根启动时调用一次，注入 PDC 键并装载内置附魔资源表。 */
     public static void init(JavaPlugin plugin) {
         key = new NamespacedKey(plugin, "minion_enchanted");
-        if (!BY_BASE.isEmpty()) {
-            return; // 幂等：/minion reload 重入不重复注册
+        ensureDefaults();
+    }
+
+    /**
+     * 装载内置默认注册表（幂等，不依赖插件实例）。
+     *
+     * <p>供单测与「配置解析早于插件装配」的场景调用：{@code FuelEntry.parse}
+     * 在校验附魔资源 key 时要查注册表，此时 PDC 键可能尚未建立。</p>
+     */
+    public static synchronized void ensureDefaults() {
+        if (BY_BASE.isEmpty()) {
+            registerBuiltins();
         }
+    }
+
+    /**
+     * 用配置定义整体替换注册表（config.yml {@code enchanted-resources:} 段，
+     * {@code /minion reload} 热重载安全）。
+     *
+     * <p>配置缺失或全非法时保留当前注册表（内置默认），不会把插件置成空表。
+     * 静态注册表按配置整体替换后，物品 PDC 里已写入的旧 key 仍能被 {@link #parse}
+     * 识别（ world 中已有物品不受热重载影响）。</p>
+     */
+    public static synchronized void reload(java.util.List<com.hcs.minions.config.EnchantedResourceDef> defs) {
+        if (defs == null || defs.isEmpty()) {
+            Logs.warn("config.yml 未配置 enchanted-resources，附魔资源继续使用内置默认表");
+            return;
+        }
+        Map<Material, EnchantedResource> byBase = new LinkedHashMap<>();
+        Map<String, EnchantedResource> byKey = new LinkedHashMap<>();
+        int skipped = 0;
+        for (com.hcs.minions.config.EnchantedResourceDef d : defs) {
+            if (d.key().isEmpty()) {
+                skipped++;
+                continue;
+            }
+            EnchantedResource r = new EnchantedResource(d.key(), d.name(), d.base(), d.ratio());
+            if (byKey.put(d.key(), r) != null) {
+                Logs.warn("enchanted-resources 存在重复 key {}，后者覆盖前者", d.key());
+            }
+            byBase.put(d.base(), r);
+        }
+        if (byKey.isEmpty()) {
+            Logs.warn("enchanted-resources 配置全部无效，继续使用内置默认表");
+            return;
+        }
+        if (skipped > 0) {
+            Logs.warn("enchanted-resources 有 {} 条无效配置被跳过", skipped);
+        }
+        BY_BASE.clear();
+        BY_KEY.clear();
+        BY_BASE.putAll(byBase);
+        BY_KEY.putAll(byKey);
+        Logs.info("附魔资源注册表已按配置重载（{} 项）", byKey.size());
+    }
+
+    /** 内置默认注册表（config.yml 缺段时使用，与原实现逐项一致）。 */
+    private static void registerBuiltins() {
         // 标准 160:1（Hypixel 主流附魔资源换算）；覆盖全部仆从产物。
         // 方案 B：矿石类附魔资源基于熔炼后的锭形态（RAW_* 需先经「自动熔炼」模块变锭）。
         // ---- 采矿 ----
@@ -179,17 +231,16 @@ public final class EnchantedResource {
     // 物品工厂
     // ------------------------------------------------------------------
 
-    /** 产出附魔资源物品：原版材质 + 附魔光效 + PDC 标记 + 中文名。 */
+    /** 产出附魔资源物品：原版材质 + 附魔光效 + PDC 标记 + 中文名（文案来自 gui.yml）。 */
     public ItemStack createItem(int amount) {
         ItemStack item = new ItemStack(base, Math.max(1, amount));
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Component.text(displayName, NamedTextColor.AQUA)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(List.of(
-                Component.text("附魔资源 · 相当于 " + ratio + " 个" + MaterialNames.of(base),
-                        NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false),
-                Component.text("仆从升级材料", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)
-        ));
+        Map<String, String> v = Map.of(
+                "name", displayName,
+                "ratio", String.valueOf(ratio),
+                "base", MaterialNames.of(base));
+        meta.displayName(GuiText.title("enchanted.title", v));
+        meta.lore(GuiText.lore("enchanted.lore", v));
         // 附魔光效（隐藏附魔标签，只保留发光）
         meta.addEnchant(Enchantment.INFINITY, 1, true);
         meta.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);

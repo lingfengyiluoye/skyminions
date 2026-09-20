@@ -327,12 +327,19 @@ public final class UpgradeCraftGui {
         v.put("tier", Roman.of(minion.level()));
         v.put("next", Roman.of(minion.level() + 1));
         int row = 1;
+        int shown = 0;
         for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
             if (row > 4) {
                 break; // 信息卡最多展示 4 行材料
             }
             v.put("m" + row, recipeLine(e.getKey(), e.getValue(), placed.getOrDefault(e.getKey(), 0L)));
             row++;
+            shown++;
+        }
+        if (shown < recipe.size()) {
+            // 超出展示行的材料不静默截断：配方仍要求全部放入合成格，必须显式告知
+            v.put("more", GuiText.raw("craft-gui.more-line",
+                    Map.of("count", String.valueOf(recipe.size()))));
         }
         if (needBody) {
             v.put("body", recipeBodyLine(bodyPlaced));
@@ -341,18 +348,21 @@ public final class UpgradeCraftGui {
                 GuiText.title("craft-gui.info.title", v), GuiText.lore("craft-gui.info.lore", v));
     }
 
-    /** 单行材料对比（MiniMessage 片段）：材料名颜色随是否放够变化，悬浮显示获取指引。 */
+    /** 单行材料对比（MiniMessage 片段，模板来自 gui.yml）：材料名颜色随是否放够变化。 */
     private static String recipeLine(ItemRef ref, long need, long placedCount) {
-        String nameColor = placedCount >= need ? "<green>" : "<red>";
-        String inner = "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
-                + " <gray>已放 " + placedCount;
-        return MaterialGuide.wrapHover(ref.guideMaterial(), inner);
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("color", placedCount >= need ? "<green>" : "<red>");
+        v.put("name", ref.displayName());
+        v.put("need", String.valueOf(need));
+        v.put("placed", String.valueOf(placedCount));
+        return MaterialGuide.wrapHover(ref.guideMaterial(), GuiText.raw("craft-gui.material-line", v));
     }
 
-    /** 本体行：需要 1 个当前等级的仆从生成物。 */
+    /** 本体行：需要 1 个当前等级的仆从生成物（模板来自 gui.yml）。 */
     private static String recipeBodyLine(int placedCount) {
-        String nameColor = placedCount >= 1 ? "<green>" : "<red>";
-        return "<dark_gray>· " + nameColor + "仆从本体 <white>×1</white> <gray>已放 " + placedCount;
+        return GuiText.raw("craft-gui.body-line", Map.of(
+                "color", placedCount >= 1 ? "<green>" : "<red>",
+                "placed", String.valueOf(placedCount)));
     }
 
     /** 结果槽占位（材料未集齐）。 */

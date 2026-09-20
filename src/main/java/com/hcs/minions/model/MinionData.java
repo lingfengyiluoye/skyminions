@@ -24,6 +24,10 @@ public record MinionData(
         double multBoost,
         /** 产量倍率剩余 tick。 */
         long multTicks,
+        /** 本轮限时燃料已装入的总 tick（GUI 进度条分母：剩余/总量 同维度）。 */
+        long fuelTotalTicks,
+        /** 本轮催化剂已装入的总 tick（GUI 进度条分母）。 */
+        long multTotalTicks,
         long lastActiveEpochMs,
         String islandId,
         String upgrade1,

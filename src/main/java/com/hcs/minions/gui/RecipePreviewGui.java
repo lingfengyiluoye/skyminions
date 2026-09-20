@@ -144,13 +144,18 @@ public final class RecipePreviewGui {
         // 3×3 摆法（可合成才有）；不可合成时网格区放"无法合成"占位
         List<Material> grid = MaterialGuide.gridOf(current);
         int[] slots = gridSlots();
+        if (slots.length == 0) {
+            return; // 服主把网格槽配空了：无可摆放区域，纯展示信息卡与按钮
+        }
         if (craftable) {
             for (int i = 0; i < slots.length && i < grid.size(); i++) {
                 Material cell = grid.get(i);
                 inv.setItem(slots[i], cell == null ? null : new ItemStack(cell));
             }
         } else {
-            inv.setItem(slots[4], named(GuiLayout.material("preview.nocraft.material"),
+            // 取网格中心格；槽数不足 5 个时退到最后一个槽，避免越界
+            int center = slots.length > 4 ? 4 : slots.length - 1;
+            inv.setItem(slots[center], named(GuiLayout.material("preview.nocraft.material"),
                     GuiText.title("preview.nocraft.title")));
         }
 

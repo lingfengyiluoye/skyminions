@@ -26,7 +26,9 @@ class SqliteMinionStoreTest {
         return new MinionData(
                 id, UUID.randomUUID(), "cobble", 5,
                 "world", 600, 100, 2,
-                72000L, 1.25, 2.0, 18000L, System.currentTimeMillis(), "island-abc",
+                72000L, 1.25, 2.0, 18000L,
+                96000L, 36000L, // fuel_total_ticks, mult_total_ticks（进度条分母）
+                System.currentTimeMillis(), "island-abc",
                 "auto_smelter", null, null, null, "golden",
                 true, 12345L, 1.30,
                 new byte[]{1, 2, 3, 4}
@@ -73,6 +75,8 @@ class SqliteMinionStoreTest {
             assertEquals(1.25, out.fuelBoost(), 1e-9, "fuelBoost 必须持久化（重启后加速不丢失）");
             assertEquals(2.0, out.multBoost(), 1e-9, "产量倍率必须持久化");
             assertEquals(18000L, out.multTicks());
+            assertEquals(96000L, out.fuelTotalTicks(), "燃料总量（进度条分母）必须持久化");
+            assertEquals(36000L, out.multTotalTicks(), "倍率总量（进度条分母）必须持久化");
             assertEquals("island-abc", out.islandId());
             assertEquals("auto_smelter", out.upgrade1());
             assertNull(out.upgrade2(), "未装备的模块槽应存 null");
@@ -85,7 +89,9 @@ class SqliteMinionStoreTest {
             // 二次 upsert（ON CONFLICT 更新路径）
             MinionData updated = new MinionData(
                     in.id(), in.owner(), in.type(), 6, in.world(), in.x(), in.y(), in.z(),
-                    36000L, 1.10, 1.0, 0L, in.lastActiveEpochMs(), in.islandId(),
+                    36000L, 1.10, 1.0, 0L,
+                    36000L, 0L, // fuel_total_ticks, mult_total_ticks
+                    in.lastActiveEpochMs(), in.islandId(),
                     null, "compactor", null, null, in.skin(),
                     false, 99999L, 1.0, new byte[]{9});
             store.upsert(updated);
@@ -163,6 +169,9 @@ class SqliteMinionStoreTest {
             assertEquals(1.0, legacy.permanentBoost(), 1e-9);
             assertNull(legacy.upgrade1());
             assertNull(legacy.islandId());
+            // 总量列迁移后默认 0；Minion.fromData 会用「剩余」兜底，旧库重启后条显示满格
+            assertEquals(0L, legacy.fuelTotalTicks());
+            assertEquals(0L, legacy.multTotalTicks());
         } finally {
             store.close();
         }

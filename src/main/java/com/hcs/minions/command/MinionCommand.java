@@ -11,6 +11,7 @@ import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.Messages;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -162,19 +163,26 @@ public final class MinionCommand extends Command {
         Messages.load(plugin);
         GuiText.load(plugin);
         ItemRef.clearCache(); // CraftEngine 自定义物品原型可能在重载后重定义
+        // 配置驱动的数值表：与 ConfigProvider 快照同步替换（各自缺段时保留内置默认）
+        var snapshot = config.get();
+        com.hcs.minions.util.EnchantedResource.reload(snapshot.enchantedResources());
+        com.hcs.minions.service.FuelService.reload(snapshot.fuels());
+        com.hcs.minions.config.GameMaps.reload(snapshot);
+        com.hcs.minions.util.Sounds.reload(com.hcs.minions.config.ConfigLoader.soundsSection(plugin));
         sender.sendMessage(Messages.configReloaded());
     }
 
     private void purge(CommandSender sender) {
         int removed = manager.purgeOrphans();
-        sender.sendMessage(Messages.purged(removed));
+        // 实体移除已改按各自 region 线程调度执行，此处报告的是「已发现并调度」的数量
+        sender.sendMessage(Messages.purgedScheduled(removed));
     }
 
     /** 运行时统计：运行时长/调度周期/稀有掉落/全场累计产出。 */
     private void stats(CommandSender sender) {
         sender.sendMessage(Messages.statsHeader());
-        for (String line : manager.statsLines()) {
-            sender.sendMessage(Messages.statsLine(line));
+        for (Component line : manager.statsLines()) {
+            sender.sendMessage(line);
         }
     }
 

@@ -2,6 +2,7 @@ package com.hcs.minions.work.lumberjack;
 
 import com.hcs.minions.model.MinionBehavior;
 import com.hcs.minions.work.BlockOps;
+import com.hcs.minions.work.ChunkGuard;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -12,7 +13,6 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,23 +30,9 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
     /** 树的纵向扩散上限（最高树约 30 格）；水平方向仍受工作半径约束。 */
     private static final int MAX_TREE_HEIGHT = 32;
 
-    /** 原木 -> 对应树苗（补种用；红树原木对应红树胎生苗）。 */
-    private static final Map<Material, Material> SAPLINGS = buildSaplings();
-
-    private static Map<Material, Material> buildSaplings() {
-        Map<Material, Material> m = new EnumMap<>(Material.class);
-        m.put(Material.OAK_LOG, Material.OAK_SAPLING);
-        m.put(Material.SPRUCE_LOG, Material.SPRUCE_SAPLING);
-        m.put(Material.BIRCH_LOG, Material.BIRCH_SAPLING);
-        m.put(Material.JUNGLE_LOG, Material.JUNGLE_SAPLING);
-        m.put(Material.ACACIA_LOG, Material.ACACIA_SAPLING);
-        m.put(Material.DARK_OAK_LOG, Material.DARK_OAK_SAPLING);
-        m.put(Material.MANGROVE_LOG, Material.MANGROVE_PROPAGULE);
-        m.put(Material.CHERRY_LOG, Material.CHERRY_SAPLING);
-        // 下界巨型菌树：补种对应真菌（菌岩上可正常生长）
-        m.put(Material.CRIMSON_STEM, Material.CRIMSON_FUNGUS);
-        m.put(Material.WARPED_STEM, Material.WARPED_FUNGUS);
-        return m;
+    /** 原木 -> 对应树苗（补种用；红树原木对应红树胎生苗）。映射来自 config.yml saplings 段。 */
+    private static Map<Material, Material> saplings() {
+        return com.hcs.minions.config.GameMaps.saplings();
     }
 
     @Override
@@ -63,7 +49,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
     public WorkOutcome performWork(WorkContext ctx) {
         Set<Material> allowed = ctx.cfg().targetsAt(ctx.minion().level()); // 分级解锁目标
         Optional<Block> found = ctx.searcher().find(
-                ctx.world(), ctx.anchor(), ctx.radius(),
+                ctx.anchor(), ctx.radius(),
                 b -> allowed.contains(b.getType()),
                 ctx.minion()
         );
@@ -72,7 +58,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
         }
 
         // 整树检测：BFS 收集相连原木，但限制在工作半径范围内（修复"虚空砍视野外木头"）
-        List<Block> logs = collectTree(found.get(), ctx.anchor(), ctx.radius(), allowed);
+        List<Block> logs = collectTree(ctx.world(), found.get(), ctx.anchor(), ctx.radius(), allowed);
         Block root = lowest(logs);
         Material rootType = root.getType(); // 砍伐前记录树种，砍后原木会变空气
         List<ItemStack> allDrops = new ArrayList<>();
@@ -100,7 +86,7 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
      * （2x2 巨树也只补根部一棵，保持简单）。
      */
     private void replantSapling(Block root, Material rootType) {
-        Material sapling = SAPLINGS.get(rootType);
+        Material sapling = saplings().get(rootType);
         if (sapling != null && root.getType().isAir()) {
             root.setType(sapling, false); // 不触发物理更新，避免树苗被弹出检查干扰
         }
@@ -113,11 +99,16 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
      * 防止把视野外相连的树砍光；但纵向放宽为 {@link #MAX_TREE_HEIGHT}，
      * 因为树高（5~8 格，丛林巨树更高）远超工作半径，若纵向也限 radius
      * 就只能砍掉树根部几格，无法连锁整棵树。</p>
+     *
+     * <p>区块守卫：树冠很可能探出仆从所在区块（范围扩展模块下更常见）。
+     * 未加载列的方块既不读取也不纳入结果——否则后续 breakAndCollect/setType
+     * 就是对其他 region 方块的可变操作，Folia 线程校验会抛异常。</p>
      */
-    private List<Block> collectTree(Block start, Block anchor, int radius, Set<Material> allowed) {
+    private List<Block> collectTree(org.bukkit.World world, Block start, Block anchor, int radius, Set<Material> allowed) {
         int ax = anchor.getX();
         int ay = anchor.getY();
         int az = anchor.getZ();
+        boolean[][] loaded = ChunkGuard.loaded(world, anchor, radius);
         List<Block> out = new ArrayList<>();
         Deque<Block> queue = new ArrayDeque<>();
         Set<Block> visited = new HashSet<>();
@@ -135,7 +126,13 @@ public final class LumberjackStrategy implements MinionWorkStrategy {
                     continue;
                 }
                 // 水平范围约束：超出工作半径的原木不扩散（防虚空砍树）
-                if (Math.abs(next.getX() - ax) > radius || Math.abs(next.getZ() - az) > radius) {
+                int dx = next.getX() - ax;
+                int dz = next.getZ() - az;
+                if (Math.abs(dx) > radius || Math.abs(dz) > radius) {
+                    continue;
+                }
+                // 区块加载守卫：未加载列的原木不纳入（跨 region 方块不可在本 region 线程破坏）
+                if (!ChunkGuard.isLoaded(loaded, dx, dz, radius)) {
                     continue;
                 }
                 // 纵向约束：只限树高，不受工作半径影响

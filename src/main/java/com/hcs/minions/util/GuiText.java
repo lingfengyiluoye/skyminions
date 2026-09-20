@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,16 +27,22 @@ import java.util.regex.Pattern;
  *   <li>标题中未提供值的占位符原样保留；</li>
  *   <li>渲染产物统一关闭原版物品名/Lore 的<b>默认斜体</b>（Paper 的 Adventure
  *       Component 未显式设置 {@code ITALIC=false} 时，客户端按原版默认斜体渲染）；</li>
- *   <li>gui.yml 缺失的键回退到内置默认模板，可 {@code /minion reload} 热重载。</li>
+ *   <li>gui.yml 缺失的键回退到内置默认模板，可 {@code /minion reload} 热重载；</li>
+ *   <li>模板解析失败（标签未配平等）不抛出：降级为去标签纯文本并告警，
+ *       避免一行写错导致整个 GUI 打不开（与 ConfigLoader 的「回退 + 告警」约定一致）。</li>
  * </ul>
  */
 public final class GuiText {
 
     private static final MiniMessage MM = MiniMessage.miniMessage();
     private static final Pattern VAR = Pattern.compile("\\{([a-zA-Z0-9_]+)}");
+    /** 去掉 MiniMessage 标签（解析失败时的纯文本降级用）。 */
+    private static final Pattern TAG = Pattern.compile("<[^<>]*>");
 
-    /** 从 gui.yml 加载的模板（key -> String 标题 或 List&lt;String&gt; lore 行）。 */
+    /** 从 gui.yml 加载的模板（key -> String 标题 或 List&lt;String&gt; lore 行；不含 layout. 段）。 */
     private static volatile Map<String, Object> templates = Map.of();
+    /** 已告警过的模板键：同一键只告警一次，防止渲染路径刷日志（reload 时重置）。 */
+    private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
 
     private GuiText() {
     }
@@ -47,8 +55,13 @@ public final class GuiText {
         }
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         GuiLayout.load(yaml); // 同一文件的 layout 段：槽位/材质布局（与文案同步热重载）
+        WARNED.clear();
         Map<String, Object> loaded = new HashMap<>();
         for (String key : yaml.getKeys(true)) {
+            // layout 段属布局配置（由 GuiLayout 解析），不并入文案模板表，避免与文案键同名时误读
+            if (key.startsWith("layout.")) {
+                continue;
+            }
             if (yaml.isString(key)) {
                 loaded.put(key, yaml.getString(key));
             } else if (yaml.isList(key)) {
@@ -69,7 +82,7 @@ public final class GuiText {
         if (tpl == null) {
             return noItalic(Component.text(key));
         }
-        return noItalic(MM.deserialize(substitute(tpl, vars)));
+        return noItalic(parse(key, substitute(tpl, vars)));
     }
 
     public static Component title(String key) {
@@ -85,13 +98,46 @@ public final class GuiText {
             if (resolved == null) {
                 continue;
             }
-            out.add(noItalic(MM.deserialize(resolved)));
+            out.add(noItalic(parse(key, resolved)));
         }
         return out;
     }
 
     public static List<Component> lore(String key) {
         return lore(key, Map.of());
+    }
+
+    // ------------------------------------------------------------------
+    // 行内嵌行（lore 片段）
+    // ------------------------------------------------------------------
+
+    /**
+     * 原始模板串（占位符已替换、未经 MiniMessage 解析）。
+     *
+     * <p>用于「行内嵌行」场景：材料对比行等 lore 片段要先渲染成 MiniMessage 串，
+     * 再作为 {@code {m1}} 等占位符的值注入外层模板。业务代码不得再硬编码这类
+     * 片段的颜色/文案——一律走 gui.yml 模板（{@code {color}} 等占位符传颜色标签）。</p>
+     */
+    public static String raw(String key, Map<String, String> vars) {
+        String tpl = string(key);
+        return tpl == null ? "" : substitute(tpl, vars);
+    }
+
+    // ------------------------------------------------------------------
+    // MiniMessage 解析（带降级兜底）
+    // ------------------------------------------------------------------
+
+    /** 解析 MiniMessage 模板；标签未配平等解析失败时降级为去标签纯文本，不让 GUI 打不开。 */
+    private static Component parse(String key, String resolved) {
+        try {
+            return MM.deserialize(resolved);
+        } catch (RuntimeException e) {
+            if (WARNED.add(key)) {
+                Logs.warn("gui.yml 模板 {} 解析失败（MiniMessage 标签可能未配平），已降级为纯文本: {}",
+                        key, e.getMessage());
+            }
+            return Component.text(TAG.matcher(resolved).replaceAll(""));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -159,26 +205,31 @@ public final class GuiText {
     private static final class Defaults {
         private static final Map<String, Object> MAP = new HashMap<>();
         /** 分隔线（Hypixel 式细线：删除线铺在空格上，比 ▬ 更干净连续）。 */
-        private static final String LINE = "<strikethrough><dark_gray>                    </strikethrough>";
+        private static final String LINE = "<strikethrough><dark_gray>                    </dark_gray></strikethrough>";
 
         static {
             MAP.put("title", "{name}");
             MAP.put("info.title", "<gradient:#FFD54A:#FF9C2A>✦ {name}</gradient> <gray>·</gray> <yellow>等级 {tier}</yellow>");
+            // 状态行（作为 lore 中 {status} 占位符的值注入）
+            MAP.put("info.status-halted", "<red>⚠ 仓库已满 · 停工中</red>");
+            MAP.put("info.status-working", "<green>✅ 运行中</green>");
+            MAP.put("info.halted-tip", "<gray>取货或开启自动售卖后恢复工作</gray>");
+            // 「下次工作」右半行：停机时不注入（整行只剩累计，不留空槽）
+            MAP.put("info.next-pair", "   <gray>下次</gray> <dark_gray>»</dark_gray> <white>{next} 秒</white>");
+            MAP.put("info.fuel-hint", "<dark_gray>空手点击燃料槽查看燃料指引</dark_gray>");
             MAP.put("info.lore", List.of(
-                    LINE,
-                    "<gray>状态</gray> <dark_gray>»</dark_gray> {status}",
-                    "",
-                    "<gray>速度</gray> <dark_gray>»</dark_gray> <green>{speed}</green> <dark_gray>秒/次</dark_gray>",
-                    "<gray>产出</gray> <dark_gray>»</dark_gray> <green>≈ {rate}</green> <dark_gray>件/小时</dark_gray>",
-                    "<gray>范围</gray> <dark_gray>»</dark_gray> <aqua>{range}</aqua>",
-                    "<gray>存储</gray> <dark_gray>»</dark_gray> <white>{storage}</white> <dark_gray>件 /</dark_gray> <white>{slots}</white> <dark_gray>格</dark_gray>",
-                    "<gray>{next_tier} 级解锁</gray> <dark_gray>»</dark_gray> <yellow>{unlock_mats}</yellow>",
-                    "<gray>稀有掉落</gray> <dark_gray>»</dark_gray> <light_purple>{rare}</light_purple> <dark_gray>({rare_chance}%)</dark_gray>",
-                    "<dark_gray>取货或开启自动售卖后恢复工作{halted_tip}</dark_gray>",
-                    "",
-                    "<gray>累计产出</gray> <dark_gray>»</dark_gray> <yellow>{total}</yellow> <dark_gray>件</dark_gray>",
-                    "<gray>下次工作</gray> <dark_gray>»</dark_gray> <green>{next}s</green>",
-                    LINE
+                    "{status}",
+                    "<gray>速度</gray> <dark_gray>»</dark_gray> <white>{speed} 秒/次</white>   "
+                            + "<gray>产出</gray> <dark_gray>»</dark_gray> <white>约 {rate} 件/时</white>",
+                    "<gray>范围</gray> <dark_gray>»</dark_gray> <white>{range}</white>   "
+                            + "<gray>存储</gray> <dark_gray>»</dark_gray> <white>{storage}</white> {storage_bar}",
+                    "<strikethrough><dark_gray>                    </dark_gray></strikethrough>",
+                    "<yellow>累计</yellow> <dark_gray>»</dark_gray> <yellow>{total} 件</yellow>{next_pair}",
+                    "<gray>稀有</gray> <dark_gray>»</dark_gray> <light_purple>{rare}</light_purple> "
+                            + "<dark_gray>({rare_chance}%)</dark_gray>",
+                    "<gray>{next_tier} 级解锁</gray> <dark_gray>»</dark_gray> <white>{unlock_mats}</white>",
+                    "{halted_tip}",
+                    "{hint}"
             ));
             MAP.put("head.title", "<gradient:#FFE98A:#FFB347>{name}</gradient> <gray>·</gray> <yellow>等级 {tier}</yellow>");
             MAP.put("head.lore", List.of(
@@ -201,6 +252,7 @@ public final class GuiText {
                     "{m3}",
                     "{m4}",
                     "{body}",
+                    "{more}",
                     LINE,
                     "<green>✔ 材料充足</green> <dark_gray>·</dark_gray> <yellow>点击合成 ▶</yellow>"
             ));
@@ -215,6 +267,7 @@ public final class GuiText {
                     "{m3}",
                     "{m4}",
                     "{body}",
+                    "{more}",
                     LINE,
                     "<yellow>点击打开合成界面</yellow> <dark_gray>（材料放入合成格）</dark_gray>"
             ));
@@ -224,19 +277,29 @@ public final class GuiText {
                     "<gray>已达最高等级</gray> <dark_gray>»</dark_gray> <gold>{tier}</gold>",
                     LINE
             ));
+            // 升级按钮内的「行内嵌行」片段（经 GuiText.raw 渲染后注入 {m1}~{m4}/{body}/{more}）
+            MAP.put("upgrade.material-line",
+                    "<dark_gray>· {color}{name} <white>×{need}</white> <gray>已有 {owned}</gray>");
+            MAP.put("upgrade.body-line",
+                    "<dark_gray>· <aqua>仆从本体</aqua> <white>×1</white> <gray>（同类型当前等级）</gray>");
+            MAP.put("upgrade.more-line",
+                    "<dark_gray>…等共 {count} 种材料（点击打开合成界面查看）</dark_gray>");
             MAP.put("fuel.title", "<gold>⛽ 燃料槽</gold>");
+            // 行内嵌行片段（经 GuiText.raw 渲染后注入 {left}/{perm}/{mult}）
+            MAP.put("fuel.left-line",
+                    "<gray>限时</gray> <dark_gray>»</dark_gray> <green>+{boost}%</green> "
+                            + "<dark_gray>·</dark_gray> <white>{fraction}</white> {bar}");
+            MAP.put("fuel.perm-line",
+                    "<gray>永久</gray> <dark_gray>»</dark_gray> <green>加速 +{perm}%</green>");
+            MAP.put("fuel.mult-line",
+                    "<gray>倍率</gray> <dark_gray>»</dark_gray> <light_purple>{mult}</light_purple> "
+                            + "<dark_gray>·</dark_gray> <white>{fraction}</white> {bar}");
             MAP.put("fuel.lore", List.of(
-                    LINE,
-                    "<gray>永久加速</gray> <dark_gray>»</dark_gray> <green>+{perm}%</green>",
-                    "<gray>限时剩余</gray> <dark_gray>»</dark_gray> <yellow>{left}s</yellow> <green>(+{timed}%)</green>",
-                    "<gray>产出倍率</gray> <dark_gray>»</dark_gray> <light_purple>{mult}</light_purple>",
+                    "{left}",
+                    "{perm}",
+                    "{mult}",
                     "<dark_gray>{nofuel}当前无燃料（仆从仍会工作）</dark_gray>",
-                    "",
-                    "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>",
-                    "<dark_gray>限时 »</dark_gray> <gray>煤炭 / 岩浆桶 / 烈焰棒</gray>",
-                    "<dark_gray>永久 »</dark_gray> <gray>岩浆膏 / 荧石粉 / 日光传感器</gray>",
-                    "<dark_gray>空手点击查看燃料指引 · 右键小人每次加 1 个</dark_gray>",
-                    LINE
+                    "<dark_gray>空手点击查看指引 · 手持燃料点击即生效</dark_gray>"
             ));
             MAP.put("skin.title", "<light_purple>✎ 皮肤</light_purple>");
             MAP.put("skin.lore", List.of(
@@ -299,18 +362,17 @@ public final class GuiText {
             MAP.put("collection-gui.filter.title", "<aqua>{sel}{name}</aqua>");
             MAP.put("collection-gui.card.title", "<gold>{name}</gold>");
             MAP.put("collection-gui.card.lore", List.of(
-                    LINE,
-                    "<gray>分类</gray> <dark_gray>»</dark_gray> <aqua>{category}</aqua>",
-                    "<gray>已解锁等级</gray> <dark_gray>»</dark_gray> <yellow>{tier}</yellow> <dark_gray>/</dark_gray> <yellow>{max_tier}</yellow>",
-                    "<gray>已放置</gray> <dark_gray>»</dark_gray> <white>{placed}</white> <dark_gray>个</dark_gray>",
-                    "<gray>总产出</gray> <dark_gray>»</dark_gray> <yellow>{produced}</yellow> <dark_gray>件</dark_gray>",
-                    "<gray>{product} 收集</gray> <dark_gray>»</dark_gray> <yellow>{collected}</yellow>",
-                    "",
-                    "<gray>下一级配方</gray>",
+                    "<gray>分类</gray> <dark_gray>»</dark_gray> <white>{category}</white>   "
+                            + "<gray>等级</gray> <dark_gray>»</dark_gray> <yellow>{tier}</yellow> "
+                            + "<dark_gray>/</dark_gray> <yellow>{max_tier}</yellow>",
+                    "<gray>放置</gray> <dark_gray>»</dark_gray> <white>{placed} 个</white>   "
+                            + "<gray>产出</gray> <dark_gray>»</dark_gray> <yellow>{produced} 件</yellow>",
+                    "<gray>收集</gray> <dark_gray>»</dark_gray> <white>{collected}/{collect_next}</white> {collect_bar}",
+                    "<strikethrough><dark_gray>                    </dark_gray></strikethrough>",
                     "{r1}",
                     "{r2}",
                     "{r3}",
-                    LINE,
+                    "{more}",
                     "<yellow>点击打开升级合成界面 ▶</yellow>"
             ));
             MAP.put("collection-gui.locked.title", "<dark_gray>??? 未解锁</dark_gray>");
@@ -324,7 +386,7 @@ public final class GuiText {
             ));
             MAP.put("collection-gui.prev.title", "<green>◀ 上一页</green>");
             MAP.put("collection-gui.next.title", "<green>下一页 ▶</green>");
-            MAP.put("collection-gui.progress.title", "<gold>✦ 图鉴进度 {unlocked}/{total}</gold>");
+            MAP.put("collection-gui.progress.title", "<gold>✦ 图鉴进度 {unlocked}/{total}</gold> {bar}");
             MAP.put("collection-gui.progress.lore", List.of(
                     "<gray>第</gray> <white>{page}</white> <dark_gray>/</dark_gray> <white>{pages}</white> <gray>页</gray>",
                     "<dark_gray>收集资源解锁更多仆从类型</dark_gray>"
@@ -332,10 +394,19 @@ public final class GuiText {
             MAP.put("collection-gui.recipe-header.title", "<gold>▼ {name} · 下一级配方</gold>");
             MAP.put("collection-gui.recipe-none.title", "<gray>尚未放置过该类型仆从，暂无升级记录</gray>");
             MAP.put("collection-gui.recipe-max.title", "<green>已达最高等级（{tier}）</green>");
+            // 图鉴卡片内的「行内嵌行」片段（经 GuiText.raw 渲染后注入 {r1}~{r3}/{more}）
+            MAP.put("collection-gui.card.recipe-line", "<dark_gray>· {name} ×{need}</dark_gray>");
+            MAP.put("collection-gui.card.body-line", "<dark_gray>· {name} 等级 {tier} ×1</dark_gray>");
+            MAP.put("collection-gui.card.more-line",
+                    "<dark_gray>…等共 {count} 种材料（详见升级合成界面）</dark_gray>");
+            // 聊天栏配方详情（点击未放置类型的卡片时输出）
+            MAP.put("collection-gui.chat.recipe-line", "<dark_gray>· <white>{name}</white> ×<yellow>{need}</yellow></dark_gray>");
+            MAP.put("collection-gui.chat.body-line", "<dark_gray>· <white>{name}</white> 等级 <yellow>{tier}</yellow> ×1</dark_gray>");
 
             // ---- 燃料选择 GUI ----
             MAP.put("fuel-gui.title", "<gold>⛽ 选择燃料</gold>");
             MAP.put("fuel-gui.empty.title", "<gray>背包中没有可用燃料</gray>");
+            MAP.put("fuel-gui.close.title", "<red>✖ 关闭</red>");
             MAP.put("fuel-gui.option.title", "<yellow>{name}</yellow>");
             MAP.put("fuel-gui.option.lore", List.of(
                     LINE,
@@ -367,6 +438,7 @@ public final class GuiText {
                     "{m3}",
                     "{m4}",
                     "{body}",
+                    "{more}",
                     LINE,
                     "<gray>把材料与本体放入左侧合成格</gray>",
                     "<yellow>材料齐后点击右侧产物合成 ▶</yellow>"
@@ -376,8 +448,18 @@ public final class GuiText {
                     "<gray>按左侧配方放入材料与本体</gray>",
                     "<yellow>潜行点击信息卡可一键填充</yellow>"
             ));
+            // 合成界面内的「行内嵌行」片段（经 GuiText.raw 渲染后注入 {m1}~{m4}/{body}/{more}）
+            MAP.put("craft-gui.material-line",
+                    "<dark_gray>· {color}{name} <white>×{need}</white> <gray>已放 {placed}</gray>");
+            MAP.put("craft-gui.body-line",
+                    "<dark_gray>· {color}仆从本体 <white>×1</white> <gray>已放 {placed}</gray>");
+            MAP.put("craft-gui.more-line",
+                    "<dark_gray>…等共 {count} 种材料（其余请直接放入合成格）</dark_gray>");
             MAP.put("craft-gui.arrow.title", "<dark_gray>➜ 合成</dark_gray>");
             MAP.put("craft-gui.back.title", "<yellow>◀ 返回仆从界面</yellow>");
+            // 升级成功的 Title 高光（主+副）
+            MAP.put("craft-gui.success.title", "<gold>✔ 升级成功</gold>");
+            MAP.put("craft-gui.success.subtitle", "<gray>当前 等级 {tier}</gray>");
             MAP.put("craft-gui.guide.title", "<gold>📖 材料指南</gold>");
             MAP.put("craft-gui.guide.lore", List.of(
                     LINE,
@@ -430,10 +512,61 @@ public final class GuiText {
             MAP.put("guide-list.close.title", "<red>✖ 关闭</red>");
 
             // ---- 升级材料总览 GUI（/minion materials） ----
-            MAP.put("materials-gui.title", "<gradient:#FFD54A:#FF9C2A>升级材料总览</gradient>");
+            MAP.put("materials-gui.title", "<gradient:#FFD54A:#FF9C2A>升级材料总览 <dark_gray>{page}/{pages}</dark_gray></gradient>");
             MAP.put("materials-gui.close.title", "<red>✖ 关闭</red>");
-            MAP.put("materials-gui.back.title", "<yellow>◀ 返回总览</yellow>");
+            MAP.put("materials-gui.prev.title", "<green>◀ 上一页</green>");
+            MAP.put("materials-gui.next.title", "<green>下一页 ▶</green>");
+            MAP.put("materials-gui.card.title", "<aqua>{name}</aqua>");
+            MAP.put("materials-gui.card.lore", List.of(
+                    LINE,
+                    "<gray>附魔资源 · 仆从升级材料</gray>",
+                    "<gray>换算</gray> <dark_gray>»</dark_gray> <white>{ratio} × {base} → 1</white>",
+                    "",
+                    "<green>▶ 点击查看合成方式</green>",
+                    LINE
+            ));
             MAP.put("materials-gui.detail.title", "<gold>{name} · 合成预览</gold>");
+            MAP.put("materials-gui.detail.info.title", "<gold>✦ 合成 {name}</gold>");
+            MAP.put("materials-gui.detail.info.lore", List.of(
+                    LINE,
+                    "<gray>需要</gray> <dark_gray>»</dark_gray> <white>{ratio} 个 {base}</white>",
+                    "<green>▶ 点击右侧成品：从背包即时压缩 1 个</green>",
+                    "<dark_gray>仆从装「超级压缩 3000」模块可自动压缩</dark_gray>",
+                    "<gray>背包现有</gray> <dark_gray>»</dark_gray> <white>{owned}</white>"
+                            + " <dark_gray>÷ {ratio} = 可压缩 {can} 个</dark_gray>",
+                    LINE
+            ));
+            MAP.put("materials-gui.detail.arrow.title", "<yellow>➜ 合成</yellow>");
+            MAP.put("materials-gui.detail.result-hint", "<green>▶ 点击从背包压缩 1 个（需 {ratio} 个{base}）</green>");
+            MAP.put("materials-gui.back.title", "<yellow>◀ 返回总览</yellow>");
+
+            // ---- 稀有掉落 Title（仆从触发专属稀有掉落时的高光时刻） ----
+            MAP.put("rare-drop.title", "<light_purple>✦ 稀有掉落!</light_purple>");
+            MAP.put("rare-drop.subtitle", "<gray>{name}</gray>");
+
+            // ---- 物品自身 Lore（非 GUI 卡片，但同属玩家可见展示内容） ----
+            // 附魔资源物品
+            MAP.put("enchanted.title", "<aqua>{name}</aqua>");
+            MAP.put("enchanted.lore", List.of(
+                    "<dark_gray>附魔资源 · 相当于 {ratio} 个{base}</dark_gray>",
+                    "<dark_gray>仆从升级材料</dark_gray>"
+            ));
+            // 模块物品
+            MAP.put("module-item.title", "<aqua>{name}</aqua>");
+            MAP.put("module-item.lore", List.of(
+                    "<gray>{desc}</gray>",
+                    "<dark_gray>手持点击仆从的模块槽装备</dark_gray>"
+            ));
+            // 仆从生成物（手持物品）
+            MAP.put("minion-item.title", "<gold>{name} {tier}</gold>");
+            MAP.put("minion-item.lore", List.of(
+                    "<gray>右键方块放置仆从</gray>",
+                    "<dark_gray>{name}</dark_gray>"
+            ));
+            // 材料指南（聊天栏指引行）
+            MAP.put("guide.chat-head", "<white>· {name}</white>");
+            MAP.put("guide.chat-source", "<dark_gray>  [{craftable}]</dark_gray> {howto}");
+            MAP.put("guide.chat-source-fallback", "<gray>  常规途径获取（挖掘/击杀/交易）</gray>");
         }
 
         private Defaults() {

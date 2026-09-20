@@ -6,6 +6,7 @@ import com.hcs.minions.event.MinionCollectEvent;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
+import com.hcs.minions.config.FuelEntry;
 import com.hcs.minions.service.FuelService;
 import com.hcs.minions.service.MinionEntityService;
 import com.hcs.minions.service.MinionItemService;
@@ -14,6 +15,7 @@ import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.MinionUpgradeType;
 import com.hcs.minions.upgrade.UpgradeService;
 import com.hcs.minions.util.Fx;
+import com.hcs.minions.util.Sounds;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
@@ -62,6 +64,9 @@ public final class MinionGUIListener implements Listener {
         }
         Minion minion = manager.minion(holder.minionId());
         if (minion == null) {
+            // 先取消再关闭：否则原版点击逻辑仍会对已关闭界面继续处理，
+            // 极端竞态（界面开着时仆从被他人拾取/插件卸载）下可致物品被吞或复制
+            event.setCancelled(true);
             event.getWhoClicked().closeInventory();
             return;
         }
@@ -139,7 +144,7 @@ public final class MinionGUIListener implements Listener {
         // 燃料槽已是按钮（点击即结算），此处仅兜底：槽内残留燃料直接结算，非燃料物品还给玩家
         ItemStack fuel = minion.storage().getItem(Minion.fuelSlot());
         if (fuel != null && fuel.getType() != Material.AIR && !Minion.isFuelHint(fuel)) {
-            FuelService.FuelValue fv = FuelService.valueOf(fuel.getType());
+            FuelEntry fv = FuelService.valueOf(fuel);
             if (fv != null) {
                 if (fv.permanent()) {
                     minion.addPermanentFuel(fv.boost());
@@ -147,7 +152,10 @@ public final class MinionGUIListener implements Listener {
                 } else {
                     minion.addFuel(fv.durationTicks() * fuel.getAmount(), fv.boost());
                     Fx.ok(player, Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
-            Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
+                    Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
+                }
+                if (fv.hasEmptyContainer()) {
+                    giveOrDrop(player, new ItemStack(fv.returnsEmpty(), fuel.getAmount()));
                 }
             } else {
                 giveOrDrop(player, fuel);
@@ -178,6 +186,14 @@ public final class MinionGUIListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
+            // 锁定存储格与 onClick 同一口径：未解锁的槽位不允许拖入
+            if (raw < event.getInventory().getSize() && Minion.isStorageSlot(raw)) {
+                int index = indexOf(Minion.storageSlots(), raw);
+                if (index >= minion.unlockedSlots()) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
         }
     }
 
@@ -185,7 +201,7 @@ public final class MinionGUIListener implements Listener {
      *  空手点击打开燃料选择 GUI（从背包装）；潜行空手点击卸下限时燃料。 */
     private void handleFuelClick(InventoryClickEvent event, Player player, Minion minion) {
         ItemStack cursor = event.getCursor();
-        FuelService.FuelValue fv = cursor == null ? null : FuelService.valueOf(cursor.getType());
+        FuelEntry fv = FuelService.valueOf(cursor);
         if (fv == null) {
             if (event.isShiftClick()) {
                 unequipTimedFuel(player, minion);
@@ -194,7 +210,6 @@ public final class MinionGUIListener implements Listener {
             }
             return;
         }
-        boolean bucketFuel = cursor.getType() == Material.LAVA_BUCKET;
         int consumed = 0;
         if (fv.permanent()) {
             minion.addPermanentFuel(fv.boost());
@@ -220,9 +235,11 @@ public final class MinionGUIListener implements Listener {
             Fx.ok(player, Messages.fuelAdded((int) ((fv.boost() - 1) * 100)));
             Fx.sound(player, org.bukkit.Sound.ENTITY_GENERIC_DRINK, 1.0f);
         }
-        if (bucketFuel) {
-            // 桶装燃料按实际消耗个数返还空桶（LAVA_BUCKET 为限时燃料，整组消耗，不能用固定 1）
-            giveOrDrop(player, new ItemStack(Material.BUCKET, consumed));
+        // 注意：消耗已经通过 event.setCursor(...) 完成（手上那叠就是被消耗的对象），
+        // 不能再调 removeOwned——那会从背包里再扣一份，造成双扣
+        if (fv.hasEmptyContainer()) {
+            // 桶装燃料按实际消耗个数返还空桶
+            giveOrDrop(player, new ItemStack(fv.returnsEmpty(), consumed));
         }
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         manager.save(minion);
@@ -241,7 +258,7 @@ public final class MinionGUIListener implements Listener {
         Fx.ok(player, Messages.fuelUnequipped());
     }
 
-    /** 燃料指引：操作方式 + 当前燃料状态 + 全部可用燃料列表。 */
+    /** 燃料指引：操作方式 + 当前燃料状态 + 全部可用燃料列表（含附魔资源催化剂）。 */
     private void sendFuelHelp(Player player, Minion minion) {
         player.sendMessage(Messages.FUEL_HELP_HEADER);
         if (minion.permanentBoost() > 1.0) {
@@ -252,12 +269,21 @@ public final class MinionGUIListener implements Listener {
             player.sendMessage(Messages.FUEL_STATUS_NONE);
         }
         player.sendMessage(Messages.FUEL_HELP_TIP);
-        for (Map.Entry<Material, FuelService.FuelValue> e : FuelService.all().entrySet()) {
-            FuelService.FuelValue fv = e.getValue();
+        for (FuelEntry fv : FuelService.all()) {
+            String name = fv.displayName() == null ? MaterialNames.of(fv.icon()) : fv.displayName();
             String duration = fv.permanent() ? "永久" : fmtDuration(fv.durationTicks());
-            player.sendMessage(Messages.fuelHelpLine(MaterialNames.of(e.getKey()),
-                    String.valueOf((int) ((fv.boost() - 1) * 100)), duration));
+            if (fv.hasMultiplier()) {
+                // 催化剂：显示倍率而非加速百分比
+                player.sendMessage(Messages.fuelHelpLine(name, "×" + trimDouble(fv.multiplier()), duration));
+            } else {
+                player.sendMessage(Messages.fuelHelpLine(name,
+                        String.valueOf((int) ((fv.boost() - 1) * 100)) + "%", duration));
+            }
         }
+    }
+
+    private static String trimDouble(double d) {
+        return d == Math.floor(d) ? String.valueOf((long) d) : String.valueOf(d);
     }
 
     private static String fmtDuration(long ticks) {
@@ -272,8 +298,7 @@ public final class MinionGUIListener implements Listener {
     }
 
     /** 模块槽交互：手持模块点击装备，空手点击已装备槽卸下（Hypixel 原版，4 槽）。 */
-    private void handleUpgradeSlot(InventoryClickEvent event, Player player, Minion minion, int slot) {
-        int slotNum;
+    private void handleUpgradeSlot(InventoryClickEvent event, Player player, Minion minion, int slot) {        int slotNum;
         if (slot == Minion.module4Slot()) {
             slotNum = 4;
         } else if (slot == Minion.module3Slot()) {
@@ -301,6 +326,12 @@ public final class MinionGUIListener implements Listener {
                 player.sendMessage(Messages.upgradeDuplicate(type.displayName()));
                 return;
             }
+            // 类型限制（对齐 Hypixel：范围扩展仅挖掘类、腐化之土仅农耕类）
+            if (!type.appliesTo(minion.type().behavior())) {
+                player.sendMessage(Messages.upgradeNotApplicable(
+                        type.displayName(), behaviorNames(type)));
+                return;
+            }
             minion.setUpgradeAt(slotNum, type);
             cursor.setAmount(cursor.getAmount() - 1);
             if (cursor.getAmount() <= 0) {
@@ -309,6 +340,7 @@ public final class MinionGUIListener implements Listener {
             minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
             manager.save(minion); // 装备模块立即登记落库
             player.sendMessage(Messages.upgradeEquipped(type.displayName()));
+            Sounds.module(player); // 装备模块：盔甲穿戴音
             return;
         }
 
@@ -322,6 +354,7 @@ public final class MinionGUIListener implements Listener {
             minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
             manager.save(minion); // 卸下模块立即登记落库
             player.sendMessage(Messages.upgradeRemoved(removed.displayName()));
+            Sounds.module(player); // 卸下模块同一音效（听感上「拿下」）
         } else {
             player.sendMessage(Messages.UPGRADE_SLOT_EMPTY);
         }
@@ -361,6 +394,7 @@ public final class MinionGUIListener implements Listener {
         manager.save(minion); // 清仓状态立即登记落库
         minion.refresh(config.get().type(minion.type()), config.get().upgradeRequirePreviousBody());
         com.hcs.minions.util.Fx.pickup(player);
+        Sounds.click(player); // 收集全部：轻快的确认音（区别于升级/里程碑的高光音）
         player.sendMessage(Messages.COLLECTED_ALL);
     }
 
@@ -371,11 +405,12 @@ public final class MinionGUIListener implements Listener {
         } catch (Exception e) {
             // 生成物异常时不移除、不关界面（玩家可重试）；留日志便于定位
             Logs.error("拾取失败（生成物构造异常）: id=" + minion.id() + ", type=" + minion.type(), e);
-            player.sendMessage(Component.text("拾取失败：物品生成异常，详情见控制台日志", NamedTextColor.RED));
+            player.sendMessage(Messages.pickupFailed());
             return;
         }
         player.closeInventory();
         manager.remove(minion, player);
+        Sounds.pickup(player); // 拾取音（与放置音一收一放，听感上可区分）
         giveOrDrop(player, spawner);
     }
 
@@ -393,5 +428,29 @@ public final class MinionGUIListener implements Listener {
             }
         }
         return -1;
+    }
+
+    /** 模块适用行为的中文名列表（类型限制提示用）。 */
+    private static String behaviorNames(MinionUpgradeType type) {
+        StringBuilder sb = new StringBuilder();
+        for (com.hcs.minions.model.MinionBehavior b : type.applicableBehaviors()) {
+            if (!sb.isEmpty()) {
+                sb.append('/');
+            }
+            sb.append(behaviorLabel(b));
+        }
+        return sb.isEmpty() ? "特定" : sb.toString();
+    }
+
+    private static String behaviorLabel(com.hcs.minions.model.MinionBehavior b) {
+        return switch (b) {
+            case MINING -> "采矿";
+            case FARMING -> "农业";
+            case FORAGING -> "伐木";
+            case FISHING -> "钓鱼";
+            case COMBAT -> "战斗";
+            case RANCHING -> "畜牧";
+            case GENERATOR -> "生成";
+        };
     }
 }

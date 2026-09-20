@@ -34,6 +34,9 @@ public final class Fx {
 
     /** 成功：ActionBar + 叮声（已构造组件）。 */
     public static void ok(Player player, Component component) {
+        if (player == null) {
+            return;
+        }
         player.sendActionBar(component);
         sound(player, Sound.BLOCK_NOTE_BLOCK_PLING, 1.2f);
     }
@@ -45,17 +48,23 @@ public final class Fx {
 
     /** 拒绝：ActionBar + 低鸣（已构造组件）。 */
     public static void deny(Player player, Component component) {
+        if (player == null) {
+            return;
+        }
         player.sendActionBar(component);
         sound(player, Sound.ENTITY_VILLAGER_NO, 0.9f);
     }
 
     /** 仅 ActionBar（不带音效）。 */
     public static void bar(Player player, String miniMessage) {
-        player.sendActionBar(MM.deserialize(miniMessage));
+        bar(player, MM.deserialize(miniMessage));
     }
 
     /** 已构造好的组件直接上 ActionBar。 */
     public static void bar(Player player, Component component) {
+        if (player == null) {
+            return;
+        }
         player.sendActionBar(component);
     }
 
@@ -64,11 +73,19 @@ public final class Fx {
         sound(player, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f);
     }
 
-    /** 高光时刻：Title（主+副）+ 升级音。 */
+    /** 高光时刻：Title（主+副）+ 升级音（MiniMessage 文本）。 */
     public static void title(Player player, String mainMini, String subMini) {
+        title(player, MM.deserialize(mainMini), MM.deserialize(subMini));
+    }
+
+    /** 高光时刻：Title（主+副，已构造组件）+ 升级音。 */
+    public static void title(Player player, Component main, Component sub) {
+        if (player == null) {
+            return;
+        }
         player.showTitle(Title.title(
-                MM.deserialize(mainMini),
-                MM.deserialize(subMini),
+                main,
+                sub,
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1400), Duration.ofMillis(200))));
         sound(player, Sound.ENTITY_PLAYER_LEVELUP, 1.0f);
     }

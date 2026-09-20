@@ -35,6 +35,11 @@
             <id>bg-software</id>
             <url>https://repo.bg-software.com/repository/api/</url>
         </repository>
+        <!-- PlaceholderAPI 官方仓库（不在 Maven Central） -->
+        <repository>
+            <id>placeholderapi</id>
+            <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -70,6 +75,20 @@
             <groupId>com.bgsoftware</groupId>
             <artifactId>SuperiorSkyblockAPI</artifactId>
             <version>2024.3</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- PlaceholderAPI（可选，softdepend）：占位符扩展；未安装时跳过注册 -->
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <version>2.11.6</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- bStats 匿名用量统计（运行时由 paper-plugin.yml libraries 挂载，同 HikariCP 模式） -->
+        <dependency>
+            <groupId>org.bstats</groupId>
+            <artifactId>bstats-bukkit</artifactId>
+            <version>3.1.0</version>
             <scope>provided</scope>
         </dependency>
 

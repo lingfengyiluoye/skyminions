@@ -13,6 +13,7 @@ import org.bukkit.entity.Monster;
 import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Slime;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,11 +30,28 @@ import static org.bukkit.Material.SUGAR;
  * 猎魔策略（范围杀敌，对齐矿工等方块检测型仆从的"检测周围"模式）：
  *
  * <p>每次工作先扫描工作范围内的真实敌对生物（僵尸/骷髅/苦力怕/蜘蛛等），
- * 有则击杀最近的一只并按其种类给出对应掉落（真实 loot 表，受抢夺等影响）；
+ * 有则击杀最近的一只并按其种类给出对应掉落（模拟 loot 表，受抢夺等影响）；
  * 范围内无实体怪物时回退为"模拟击杀"随机产出怪物掉落 —— 空岛无刷怪塔也仍有基础产出。
  * 不再出现"面前有僵尸不杀、却虚空杀敌"的问题。</p>
+ *
+ * <p>线程边界：{@code damage()} 是对实体的可变操作，Folia 要求在其<b>所属 region 线程</b>
+ * 执行，而仆从所在 region 与怪物所在 region 不一定相同（范围扩展模块下更常见）。
+ * 因此击杀经 {@link LivingEntity#getScheduler() 实体调度器} 投递，mark/unmark 配对
+ * 也在该任务内完成，杜绝跨 region 线程校验异常与标记残留。</p>
  */
 public final class SlayerStrategy implements MinionWorkStrategy {
+
+    /** 一击必杀的伤害值：远超任何怪物血量上限（最高 1024），为护甲/抗性减免留足余量。 */
+    private static final double LETHAL_DAMAGE = 9999.0;
+
+    /** 致死预判的减免下界：即便保护 IV + 抗性 II，削减后的伤害也不低于 1999.8。 */
+    private static final double DAMAGE_REDUCTION_FLOOR = 0.2;
+
+    private final JavaPlugin plugin;
+
+    public SlayerStrategy(JavaPlugin plugin) {
+        this.plugin = plugin;
+    }
 
     /** 模拟击杀（范围内无真实怪物时）的随机掉落池。 */
     private static final List<Material> GENERIC_DROPS = List.of(
@@ -67,19 +85,26 @@ public final class SlayerStrategy implements MinionWorkStrategy {
     public WorkOutcome performWork(WorkContext ctx) {
         Entity victim = findHostile(ctx);
         if (victim instanceof LivingEntity living) {
-            // 真实击杀：先算好本次要给的掉落（模拟 loot 表），再决定是否触发原版死亡。
-            // 关键——只有"这一击确实能致死"时才 mark：用当前血量预判，而不是打完再回看
-            // living.isDead()（damage() 会同步派发 EntityDeathEvent，标记晚于监听器就漏清掉落）。
+            // 真实击杀：先算好本次要给的掉落（模拟 loot 表），击杀本身连同致死预判
+            // 一起投递到实体自己的 region 线程——血量/吸收等实体状态的读取同样
+            // 受 Folia 实体线程约束，不能放在仆从 region 线程上做
             List<ItemStack> drops = lootOf(victim, ctx.random());
-            boolean lethal = living.getHealth() <= 9999.0;
-            if (lethal) {
-                SlayerKills.mark(living);
-            }
-            living.damage(9999.0);
-            // 理论致死却因抗性/无敌/其他插件拦截而没死：撤销标记，避免后续他人击杀被误吞掉落
-            if (lethal && !living.isDead() && living.isValid()) {
-                SlayerKills.unmark(living);
-            }
+            living.getScheduler().run(plugin, task -> {
+                if (living.isDead() || !living.isValid()) {
+                    // 任务执行前已死亡/被移除：不标记（自然死亡由监听器处理，
+                    // 无死亡事件的移除路径不残留标记）
+                    return;
+                }
+                // 只有"这一击确实能致死"时才 mark（预判在实体线程读取真实血量）
+                if (predictLethal(living)) {
+                    SlayerKills.mark(living);
+                }
+                living.damage(LETHAL_DAMAGE);
+                if (living.isValid() && !living.isDead()) {
+                    // 抗性/无敌/其他插件拦截而未致死：撤销标记，避免误清他人击杀的掉落
+                    SlayerKills.unmark(living);
+                }
+            }, null);
             long xp = Math.max(1, drops.stream().mapToLong(ItemStack::getAmount).sum());
             return new WorkOutcome(true, xp, drops);
         }
@@ -87,6 +112,19 @@ public final class SlayerStrategy implements MinionWorkStrategy {
         int n = 1 + ctx.random().nextInt(2);
         Material drop = GENERIC_DROPS.get(ctx.random().nextInt(GENERIC_DROPS.size()));
         return new WorkOutcome(true, n, List.of(new ItemStack(drop, n)));
+    }
+
+    /**
+     * 致死预判（纯函数式判断，可单测）：9999 伤害经满级护甲/抗性削减后仍不低于 1999.8，
+     * 而怪物血量上限 1024 —— 除无敌、已死亡或插件拦截伤害外必死。
+     *
+     * <p>必须在<b>该实体自己的 region 线程</b>调用（读取血量/吸收受 Folia 实体线程约束）。</p>
+     */
+    static boolean predictLethal(LivingEntity living) {
+        if (!living.isValid() || living.isDead() || living.isInvulnerable()) {
+            return false;
+        }
+        return living.getHealth() + living.getAbsorptionAmount() <= LETHAL_DAMAGE * DAMAGE_REDUCTION_FLOOR;
     }
 
     /** 按怪物种类映射原版掉落（数量随机，对齐自然击杀的产出形态）。 */

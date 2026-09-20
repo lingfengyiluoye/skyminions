@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * GUI 布局配置引擎（gui.yml 的 layout 段）：所有 GUI 的按钮槽位与图标材质可自定义。
@@ -20,20 +21,24 @@ import java.util.Set;
  *   <li>可 {@code /minion reload} 热重载（布局变化在下次打开对应 GUI 时生效）。</li>
  * </ul>
  *
- * <p>键前缀与界面尺寸：{@code storage.*}/{@code collection.*}/{@code craft.*} = 54 格，
- * {@code fuel-gui.*} = 27 格。槽位冲突（与存储区/卡片区重叠）不强制拦截，
+ * <p>键前缀与界面尺寸：{@code storage.*}/{@code collection.*}/{@code craft.*}/{@code materials-gui.*}
+ * = 54 格（{@code materials-gui.detail.*} = 45 格），{@code fuel-gui.*}/{@code guide-list.*} = 27 格，
+ * {@code preview.*} = 45 格。槽位冲突（与存储区/卡片区重叠）不强制拦截，
  * 但渲染顺序靠后的一方会覆盖前者，服主自行避免。</p>
  */
 public final class GuiLayout {
 
     /** 已解析的布局值（key -> Integer / int[] / Material），load 时整体重建（volatile 热重载安全）。 */
     private static volatile Map<String, Object> values = Map.of();
+    /** 已告警过的未知键（拼写错误/未登记）：只告警一次，避免热路径刷日志。 */
+    private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
 
     private GuiLayout() {
     }
 
     /** 从 gui.yml 的 layout 段加载；可重复调用（热重载）。yaml 为 null 时仅用内置默认。 */
     public static void load(YamlConfiguration yaml) {
+        WARNED.clear();
         Map<String, Object> out = new HashMap<>();
         if (yaml != null) {
             for (String key : Defaults.SLOT_DEFAULTS.keySet()) {
@@ -54,31 +59,46 @@ public final class GuiLayout {
         Logs.info("GUI 布局已加载（{} 项槽位/材质，来自 gui.yml layout 段）", out.size());
     }
 
-    /** 单槽位：gui.yml 缺失/非法时回退内置默认。 */
+    /** 单槽位：gui.yml 缺失/非法时回退内置默认；键未登记时告警。 */
     public static int slot(String key) {
         Object v = values.get(key);
         if (v instanceof Integer i) {
             return i;
         }
-        return Defaults.SLOT_DEFAULTS.getOrDefault(key, 0);
+        Integer d = Defaults.SLOT_DEFAULTS.get(key);
+        if (d == null) {
+            warnUnknown("槽位", key);
+            return 0;
+        }
+        return d;
     }
 
-    /** 槽位数组：gui.yml 缺失/全部非法时回退内置默认。 */
+    /** 槽位数组：gui.yml 缺失/全部非法时回退内置默认；键未登记时告警。 */
     public static int[] slots(String key) {
         Object v = values.get(key);
         if (v instanceof int[] arr && arr.length > 0) {
             return arr;
         }
-        return Defaults.SLOTS_DEFAULTS.getOrDefault(key, new int[0]);
+        int[] d = Defaults.SLOTS_DEFAULTS.get(key);
+        if (d == null) {
+            warnUnknown("槽位组", key);
+            return new int[0];
+        }
+        return d;
     }
 
-    /** 图标材质：gui.yml 缺失/无法识别时回退内置默认。 */
+    /** 图标材质：gui.yml 缺失/无法识别时回退内置默认；键未登记时告警。 */
     public static Material material(String key) {
         Object v = values.get(key);
         if (v instanceof Material m) {
             return m;
         }
-        return Defaults.MATERIAL_DEFAULTS.getOrDefault(key, Material.STONE);
+        Material d = Defaults.MATERIAL_DEFAULTS.get(key);
+        if (d == null) {
+            warnUnknown("材质", key);
+            return Material.STONE;
+        }
+        return d;
     }
 
     /** 材质调色板（多色边框玻璃等）：gui.yml 为字符串列表；缺失/全非法回退内置默认（可能为空数组）。 */
@@ -87,7 +107,18 @@ public final class GuiLayout {
         if (v instanceof Material[] arr && arr.length > 0) {
             return arr;
         }
-        return Defaults.MATERIALS_DEFAULTS.getOrDefault(key, new Material[0]);
+        Material[] d = Defaults.MATERIALS_DEFAULTS.get(key);
+        if (d == null) {
+            warnUnknown("材质组", key);
+            return new Material[0];
+        }
+        return d;
+    }
+
+    private static void warnUnknown(String kind, String key) {
+        if (WARNED.add(key)) {
+            Logs.warn("gui.yml layout {}键 {} 未在内置默认中登记（拼写错误或新增界面漏登记 Defaults），已回退", kind, key);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -95,18 +126,36 @@ public final class GuiLayout {
     // ------------------------------------------------------------------
 
     private static int sizeOf(String key) {
+        if (key.startsWith("materials-gui.detail.") || key.startsWith("preview.")) {
+            return 45;
+        }
         if (key.startsWith("fuel-gui.") || key.startsWith("guide-list.")) {
             return 27;
         }
-        return key.startsWith("preview.") ? 45 : 54;
+        return 54; // storage./collection./craft./materials-gui. 总览
     }
 
+    /** 单槽位：gui.yml 缺失/非法时回退内置默认；键存在但非整数（如带引号数字）时解析并告警。 */
     private static void readSlot(Map<String, Object> out, YamlConfiguration yaml, String key) {
         String path = "layout." + key;
-        if (!yaml.isInt(path)) {
+        Object raw = yaml.get(path);
+        if (raw == null) {
             return;
         }
-        int v = yaml.getInt(path);
+        int v;
+        if (raw instanceof Number n) {
+            v = n.intValue();
+        } else if (raw instanceof String s) {
+            try {
+                v = Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                Logs.warn("gui.yml layout.{} 值 {} 不是合法整数，已回退默认", key, raw);
+                return;
+            }
+        } else {
+            Logs.warn("gui.yml layout.{} 值 {} 应为整数，已回退默认", key, raw);
+            return;
+        }
         if (v < 0 || v >= sizeOf(key)) {
             Logs.warn("gui.yml layout.{} 槽位 {} 越界（0-{}），已回退默认", key, v, sizeOf(key) - 1);
             return;
@@ -303,8 +352,13 @@ public final class GuiLayout {
             MATERIAL_DEFAULTS.put("collection.progress.material", Material.BOOK);
 
             // ---- 燃料选择 GUI（27 格） ----
-            SLOTS_DEFAULTS.put("fuel-gui.option.slots", new int[]{10, 11, 12, 13, 14, 15, 16});
-            SLOT_DEFAULTS.put("fuel-gui.status.slot", 22);
+            // 选项槽扩至 14 个（两行）：FuelService 注册 11 种燃料，旧默认仅 7 格会导致
+            // 紫水晶碎片/烈焰粉/幻翼膜等催化剂燃料在 GUI 中点不到
+            SLOTS_DEFAULTS.put("fuel-gui.option.slots", new int[]{
+                    10, 11, 12, 13, 14, 15, 16,
+                    19, 20, 21, 22, 23, 24, 25
+            });
+            SLOT_DEFAULTS.put("fuel-gui.status.slot", 18);
             SLOT_DEFAULTS.put("fuel-gui.close.slot", 26);
             MATERIAL_DEFAULTS.put("fuel-gui.empty.material", Material.GRAY_STAINED_GLASS_PANE);
             MATERIAL_DEFAULTS.put("fuel-gui.close.material", Material.BARRIER);
@@ -343,9 +397,49 @@ public final class GuiLayout {
 
             // ---- 材料指南清单 GUI（27 格，两级导航第一级） ----
             SLOTS_DEFAULTS.put("guide-list.material.slots", new int[]{10, 11, 12, 13, 14, 15, 16});
+            SLOTS_DEFAULTS.put("guide-list.decor.slots", new int[]{
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                    17, 18, 19, 20, 21, 23, 24, 25, 26
+            });
             SLOT_DEFAULTS.put("guide-list.close.slot", 22);
             MATERIAL_DEFAULTS.put("guide-list.close.material", Material.BARRIER);
             MATERIAL_DEFAULTS.put("guide-list.decor.material", Material.BLACK_STAINED_GLASS_PANE);
+
+            // ---- 升级材料总览 GUI（54 格，/minion materials） ----
+            // 卡片区 28 格（4 行 × 7 列），附魔资源按注册数分页（56 种 → 2 页），
+            // 底部为 上一页 / 关闭 / 下一页
+            SLOTS_DEFAULTS.put("materials-gui.card.slots", new int[]{
+                    10, 11, 12, 13, 14, 15, 16,
+                    19, 20, 21, 22, 23, 24, 25,
+                    28, 29, 30, 31, 32, 33, 34,
+                    37, 38, 39, 40, 41, 42, 43
+            });
+            SLOTS_DEFAULTS.put("materials-gui.decor.slots", new int[]{
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                    17, 18, 26, 27, 35, 36,
+                    44, 45, 46, 47, 51, 52, 53
+            });
+            SLOT_DEFAULTS.put("materials-gui.prev.slot", 48);
+            SLOT_DEFAULTS.put("materials-gui.close.slot", 49);
+            SLOT_DEFAULTS.put("materials-gui.next.slot", 50);
+            MATERIAL_DEFAULTS.put("materials-gui.prev.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("materials-gui.next.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("materials-gui.close.material", Material.BARRIER);
+            MATERIAL_DEFAULTS.put("materials-gui.decor.material", Material.BLUE_STAINED_GLASS_PANE);
+            // 预览页（45 格）：3×3 网格 → 箭头 → 成品；4 信息卡 | 44 返回 | 36 关闭
+            SLOTS_DEFAULTS.put("materials-gui.detail.grid.slots", new int[]{
+                    20, 21, 22, 29, 30, 31, 38, 39, 40
+            });
+            SLOT_DEFAULTS.put("materials-gui.detail.arrow.slot", 24);
+            SLOT_DEFAULTS.put("materials-gui.detail.result.slot", 25);
+            SLOT_DEFAULTS.put("materials-gui.detail.info.slot", 4);
+            SLOT_DEFAULTS.put("materials-gui.detail.back.slot", 44);
+            SLOT_DEFAULTS.put("materials-gui.detail.close.slot", 36);
+            MATERIAL_DEFAULTS.put("materials-gui.detail.decor.material", Material.GRAY_STAINED_GLASS_PANE);
+            MATERIAL_DEFAULTS.put("materials-gui.detail.info.material", Material.KNOWLEDGE_BOOK);
+            MATERIAL_DEFAULTS.put("materials-gui.detail.arrow.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("materials-gui.detail.back.material", Material.ARROW);
+            MATERIAL_DEFAULTS.put("materials-gui.detail.close.material", Material.BARRIER);
             SLOTS_DEFAULTS.put("craft.decor.slots", new int[]{
                     0, 1, 2, 3, 5, 6, 7, 8,
                     9, 14, 15, 16, 17, 18,

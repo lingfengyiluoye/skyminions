@@ -1,6 +1,7 @@
 package com.hcs.minions.gui;
 
 import com.hcs.minions.model.Minion;
+import com.hcs.minions.config.FuelEntry;
 import com.hcs.minions.service.FuelService;
 import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
@@ -16,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,17 +34,25 @@ import java.util.UUID;
  */
 public final class FuelGui {
 
-    /** 燃料选择界面容器：携带所属仆从 id，创建后回填真实 {@link Inventory} 满足契约。 */
+    /** 燃料选择界面容器：携带所属仆从 id 与「槽位 -> 燃料条目」映射
+     *  （附魔资源催化剂与同材质散装物品只能靠条目身份区分，不能按图标反查）。 */
     public static final class FuelHolder implements InventoryHolder {
         private final UUID minionId;
+        private final Map<Integer, FuelEntry> options;
         private Inventory inventory;
 
-        public FuelHolder(UUID minionId) {
+        public FuelHolder(UUID minionId, Map<Integer, FuelEntry> options) {
             this.minionId = minionId;
+            this.options = options;
         }
 
         public UUID minionId() {
             return minionId;
+        }
+
+        /** 槽位对应的燃料条目（非选项槽返回 null）。 */
+        public FuelEntry optionAt(int slot) {
+            return options.get(slot);
         }
 
         void attach(Inventory inventory) {
@@ -71,54 +81,60 @@ public final class FuelGui {
     private FuelGui() {
     }
 
-    /** 打开燃料选择界面：只列出玩家背包中实际拥有的燃料。 */
+    /** 打开燃料选择界面：只列出玩家背包中实际拥有的燃料（含附魔资源催化剂）。 */
     public static void open(Player player, Minion minion) {
-        Inventory inv = Bukkit.createInventory(new FuelHolder(minion.id()), 27,
+        // 先算出「拥有的燃料 -> 槽位」映射，再建界面（holder 需要它）
+        int[] optionSlots = optionSlots();
+        int status = statusSlot();
+        int close = closeSlot();
+        Map<Integer, FuelEntry> slotOptions = new LinkedHashMap<>();
+        List<FuelEntry> ownedEntries = new ArrayList<>();
+        int slotIndex = 0;
+        for (FuelEntry entry : FuelService.all()) {
+            if (FuelService.countOwned(player, entry) <= 0 || slotIndex >= optionSlots.length) {
+                continue;
+            }
+            int slot = optionSlots[slotIndex];
+            // 旧配置把状态卡放在选项区中间（如 slot 22）时，跳过该槽，
+            // 避免状态卡覆盖选项导致那种燃料在 GUI 中点不到
+            if (slot == status || slot == close) {
+                slotIndex++;
+                continue;
+            }
+            slotOptions.put(slot, entry);
+            ownedEntries.add(entry);
+            slotIndex++;
+        }
+
+        Inventory inv = Bukkit.createInventory(
+                new FuelHolder(minion.id(), Map.copyOf(slotOptions)), 27,
                 GuiText.title("fuel-gui.title"));
         if (inv.getHolder() instanceof FuelHolder holder) {
             holder.attach(inv);
         }
-
-        Map<Material, Integer> owned = scanInventory(player);
-        int[] optionSlots = optionSlots();
-        int slotIndex = 0;
-        for (Map.Entry<Material, FuelService.FuelValue> e : FuelService.all().entrySet()) {
-            int count = owned.getOrDefault(e.getKey(), 0);
-            if (count <= 0 || slotIndex >= optionSlots.length) {
-                continue;
-            }
-            inv.setItem(optionSlots[slotIndex++], optionItem(e.getKey(), e.getValue(), count));
+        for (Map.Entry<Integer, FuelEntry> e : slotOptions.entrySet()) {
+            FuelEntry entry = e.getValue();
+            inv.setItem(e.getKey(), optionItem(entry, FuelService.countOwned(player, entry)));
         }
-        if (slotIndex == 0 && optionSlots.length > 0) {
+        if (slotOptions.isEmpty() && optionSlots.length > 0) {
             inv.setItem(optionSlots[optionSlots.length / 2], named(GuiLayout.material("fuel-gui.empty.material"),
                     GuiText.title("fuel-gui.empty.title")));
         }
         inv.setItem(statusSlot(), statusItem(minion));
         inv.setItem(closeSlot(), named(GuiLayout.material("fuel-gui.close.material"),
-                GuiText.title("collection-gui.close.title")));
+                GuiText.title("fuel-gui.close.title")));
         player.openInventory(inv);
     }
 
-    /** 扫描玩家背包，聚合每种燃料的数量。 */
-    private static Map<Material, Integer> scanInventory(Player player) {
-        Map<Material, Integer> counts = new LinkedHashMap<>();
-        for (ItemStack item : player.getInventory().getStorageContents()) {
-            if (item != null && FuelService.isFuel(item.getType())) {
-                counts.merge(item.getType(), item.getAmount(), Integer::sum);
-            }
-        }
-        return counts;
-    }
-
     /** 燃料选项卡：物品 + 加速% + 产量倍率 + 持续时间 + 背包数量。 */
-    private static ItemStack optionItem(Material material, FuelService.FuelValue fv, int count) {
+    private static ItemStack optionItem(FuelEntry fv, int count) {
         Map<String, String> v = new LinkedHashMap<>();
-        v.put("name", MaterialNames.of(material));
+        v.put("name", fv.displayName() == null ? MaterialNames.of(fv.icon()) : fv.displayName());
         v.put("boost", String.valueOf((int) ((fv.boost() - 1) * 100)));
         v.put("mult", fv.hasMultiplier() ? "×" + trimDouble(fv.multiplier()) : "-");
         v.put("duration", fv.permanent() ? "永久" : fmtDuration(fv.durationTicks()));
         v.put("count", String.valueOf(count));
-        ItemStack item = new ItemStack(material);
+        ItemStack item = new ItemStack(fv.icon());
         ItemMeta meta = item.getItemMeta();
         Component title = GuiText.title("fuel-gui.option.title", v)
                 .decoration(TextDecoration.ITALIC, false);

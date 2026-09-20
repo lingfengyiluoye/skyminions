@@ -88,6 +88,12 @@ public final class CraftEngineHook {
             String id = key.toString();
             return id.isBlank() ? null : id;
         } catch (Throwable t) {
+            // 静默返回 null 会被上层当成「原版物品」，进而让 VanillaRef 误匹配同材质
+            // 自定义物品（配方误计/误扣）。按物品类型一次性告警，与 build() 同口径
+            if (WARNED.add(stack.getType().name())) {
+                Logs.warn("CraftEngine 物品 id 查询失败（版本不兼容？），{} 将按原版物品处理",
+                        stack.getType(), t);
+            }
             return null;
         }
     }

@@ -2,8 +2,6 @@ package com.hcs.minions.util;
 
 import org.bukkit.Material;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -195,20 +193,22 @@ public final class MaterialGuide {
         return sb.toString();
     }
 
-    /** 聊天卡片用：材料的完整指引行列表（名称行 + 获取行）。 */
+    /** 聊天卡片用：材料的完整指引行列表（名称行 + 获取行；文案来自 gui.yml）。 */
     public static List<Component> chatLines(Material material) {
         List<Component> out = new ArrayList<>();
         Optional<Guide> g = guide(material);
-        TextComponent head = Component.text("· " + nameOr(material, g.map(Guide::vanillaName).orElse(null)),
-                NamedTextColor.WHITE);
-        out.add(head);
+        out.add(GuiText.title("guide.chat-head", Map.of(
+                "name", nameOr(material, g.map(Guide::vanillaName).orElse(null)))));
         if (g.isPresent()) {
-            NamedTextColor c = g.get().craftable() ? NamedTextColor.GREEN : NamedTextColor.YELLOW;
-            out.add(Component.text("  [" + (g.get().craftable() ? "可合成" : "不可合成") + "] ",
-                    NamedTextColor.DARK_GRAY)
-                    .append(Component.text(g.get().howToGet(), c)));
+            Guide guide = g.get();
+            // {howto} 的值自带颜色标签（模板只负责排版与括号）， CraftEngine 物品名
+            // 等外部字符串因此不会被当作 MiniMessage 标签解析
+            out.add(GuiText.title("guide.chat-source", Map.of(
+                    "craftable", guide.craftable() ? "可合成" : "不可合成",
+                    "howto", (guide.craftable() ? "<green>" : "<yellow>")
+                            + guide.howToGet() + (guide.craftable() ? "</green>" : "</yellow>"))));
         } else {
-            out.add(Component.text("  常规途径获取（挖掘/击杀/交易）", NamedTextColor.GRAY));
+            out.add(GuiText.title("guide.chat-source-fallback", Map.of()));
         }
         return out;
     }

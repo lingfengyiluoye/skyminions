@@ -1,14 +1,17 @@
 package com.hcs.minions.upgrade;
 
+import com.hcs.minions.model.MinionBehavior;
 import org.bukkit.Material;
 
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 仆从升级模块类型（Hypixel 原版玩法，一比一对齐）。
  *
- * <p>仆从拥有两个模块槽位，随 Tier 解锁（见 {@code Minion#unlockedUpgradeSlots}）。
+ * <p>仆从拥有四个模块槽位，随 Tier 解锁（见 {@code Minion#unlockedUpgradeSlots}）。
  * 模块效果统一在 {@link UpgradeService} 中结算。</p>
  *
  * <ul>
@@ -23,6 +26,11 @@ import java.util.Optional;
  *   <li>腐化之土 CORRUPT_SOIL：每次工作有概率额外产出腐化副产物（硫磺+腐化碎片，对齐 Hypixel Corrupt Soil）</li>
  *   <li>储物箱 STORAGE_SMALL/MEDIUM/LARGE：额外解锁 +6/+12/+18 格仓库存储（对齐 Hypixel Storage 升级，占模块槽）</li>
  * </ul>
+ *
+ * <p><b>类型限制（保真度）</b>：Hypixel 里部分模块只对特定仆从生效——
+ * Minion Expander 只对挖掘类、Corrupt Soil 只对农耕类。{@link #appliesTo(MinionBehavior)}
+ * 统一表达这个约束，效果结算与装备校验都走它，避免「钓鱼仆从装范围扩展真的扩大
+ * 搜水半径」这类与原版数值对不上的情况。</p>
  */
 public enum MinionUpgradeType {
 
@@ -39,6 +47,13 @@ public enum MinionUpgradeType {
     STORAGE_MEDIUM("storage_medium", "中型储物箱", Material.TRAPPED_CHEST, "额外解锁 +12 格仓库存储（占用一个模块槽）"),
     STORAGE_LARGE("storage_large", "大型储物箱", Material.ENDER_CHEST, "额外解锁 +18 格仓库存储（占用一个模块槽）");
 
+    /** 全部行为（无类型限制的模块用）。 */
+    private static final Set<MinionBehavior> ALL = EnumSet.allOf(MinionBehavior.class);
+    /** 仅挖掘类（对齐 Hypixel：Minion Expander 只作用于 Mining）。 */
+    private static final Set<MinionBehavior> MINING_ONLY = EnumSet.of(MinionBehavior.MINING);
+    /** 仅农耕类（对齐 Hypixel：Corrupt Soil 只作用于 Farming）。 */
+    private static final Set<MinionBehavior> FARMING_ONLY = EnumSet.of(MinionBehavior.FARMING);
+
     /** 储物箱模块提供的额外存储格数（0 = 非储物箱模块）。 */
     public int bonusStorageSlots() {
         return switch (this) {
@@ -46,6 +61,29 @@ public enum MinionUpgradeType {
             case STORAGE_MEDIUM -> 12;
             case STORAGE_LARGE -> 18;
             default -> 0;
+        };
+    }
+
+    /**
+     * 该模块是否对指定仆从行为生效（效果结算与装备校验共用）。
+     *
+     * <p>自动熔炼只对「产物可熔炼」的类型有意义，但其映射表天然只含矿石/沙子，
+     * 对其他类型是无操作，故不额外限制；范围扩展与腐化之土按 Hypixel 口径限类型。</p>
+     */
+    public boolean appliesTo(MinionBehavior behavior) {
+        return switch (this) {
+            case MINION_EXPANDER -> MINING_ONLY.contains(behavior);
+            case CORRUPT_SOIL -> FARMING_ONLY.contains(behavior);
+            default -> true;
+        };
+    }
+
+    /** 生效行为集合（GUI 提示用，不可变快照）。 */
+    public Set<MinionBehavior> applicableBehaviors() {
+        return switch (this) {
+            case MINION_EXPANDER -> Set.copyOf(MINING_ONLY);
+            case CORRUPT_SOIL -> Set.copyOf(FARMING_ONLY);
+            default -> ALL;
         };
     }
 

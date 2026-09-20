@@ -37,6 +37,8 @@ public final class MysqlMinionStore implements MinionStore {
               fuel_boost DOUBLE NOT NULL DEFAULT 1.0,
               mult_boost DOUBLE NOT NULL DEFAULT 1.0,
               mult_ticks BIGINT NOT NULL DEFAULT 0,
+              fuel_total_ticks BIGINT NOT NULL DEFAULT 0,
+              mult_total_ticks BIGINT NOT NULL DEFAULT 0,
               last_active BIGINT NOT NULL,
               island_id VARCHAR(36),
               upgrade1 VARCHAR(32),
@@ -52,13 +54,14 @@ public final class MysqlMinionStore implements MinionStore {
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, upgrade3, upgrade4, skin, auto_sell, total_produced, permanent_boost, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, fuel_total_ticks, mult_total_ticks, last_active, island_id, upgrade1, upgrade2, upgrade3, upgrade4, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE
               owner=VALUES(owner), type=VALUES(type), level=VALUES(level), xp=VALUES(xp),
               world=VALUES(world), x=VALUES(x), y=VALUES(y), z=VALUES(z),
               fuel_ticks=VALUES(fuel_ticks), fuel_boost=VALUES(fuel_boost),
               mult_boost=VALUES(mult_boost), mult_ticks=VALUES(mult_ticks),
+              fuel_total_ticks=VALUES(fuel_total_ticks), mult_total_ticks=VALUES(mult_total_ticks),
               last_active=VALUES(last_active),
               island_id=VALUES(island_id), upgrade1=VALUES(upgrade1), upgrade2=VALUES(upgrade2),
               upgrade3=VALUES(upgrade3), upgrade4=VALUES(upgrade4),
@@ -87,8 +90,11 @@ public final class MysqlMinionStore implements MinionStore {
             throw new IllegalStateException("未找到 MySQL JDBC 驱动", e);
         }
         HikariConfig hc = new HikariConfig();
+        // useSSL 由 database.use-ssl 配置驱动（默认 false 保持既有部署行为：
+        // 内网/自签证书场景不开启也能连）；需要传输加密的服主显式置 true
         hc.setJdbcUrl("jdbc:mysql://" + config.host() + ":" + config.port() + "/" + config.database()
-                + "?useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8");
+                + "?useSSL=" + config.useSsl()
+                + "&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8");
         hc.setUsername(config.user());
         hc.setPassword(config.password());
         hc.setMaximumPoolSize(Math.max(2, config.poolSize()));
@@ -126,8 +132,10 @@ public final class MysqlMinionStore implements MinionStore {
             addColumnIfMissing(st, existing, "upgrade4", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "skin", "VARCHAR(32)", null);
             addColumnIfMissing(st, existing, "fuel_boost", "DOUBLE NOT NULL", "1.0");
-        addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
+            addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
         addColumnIfMissing(st, existing, "mult_ticks", "BIGINT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "fuel_total_ticks", "BIGINT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "mult_total_ticks", "BIGINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "auto_sell", "TINYINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "total_produced", "BIGINT NOT NULL", "0");
             addColumnIfMissing(st, existing, "permanent_boost", "DOUBLE NOT NULL", "1.0");
@@ -280,6 +288,8 @@ public final class MysqlMinionStore implements MinionStore {
         ps.setDouble(i++, d.fuelBoost());
         ps.setDouble(i++, d.multBoost());
         ps.setLong(i++, d.multTicks());
+        ps.setLong(i++, d.fuelTotalTicks());
+        ps.setLong(i++, d.multTotalTicks());
         ps.setLong(i++, d.lastActiveEpochMs());
         ps.setString(i++, d.islandId());
         ps.setString(i++, d.upgrade1());
@@ -294,6 +304,18 @@ public final class MysqlMinionStore implements MinionStore {
     }
 
     private static MinionData map(ResultSet rs) throws Exception {
+        long fuelTicks = rs.getLong("fuel_ticks");
+        long multTicks = rs.getLong("mult_ticks");
+        // 旧库无总量列时读取抛错 → 回退为剩余量（进度条显示满格，重启后按新口径累计）
+        long fuelTotal;
+        long multTotal;
+        try {
+            fuelTotal = rs.getLong("fuel_total_ticks");
+            multTotal = rs.getLong("mult_total_ticks");
+        } catch (java.sql.SQLException e) {
+            fuelTotal = fuelTicks;
+            multTotal = multTicks;
+        }
         return new MinionData(
                 UUID.fromString(rs.getString("id")),
                 UUID.fromString(rs.getString("owner")),
@@ -301,10 +323,12 @@ public final class MysqlMinionStore implements MinionStore {
                 rs.getInt("level"),
                 rs.getString("world"),
                 rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
-                rs.getLong("fuel_ticks"),
+                fuelTicks,
                 rs.getDouble("fuel_boost"),
                 rs.getDouble("mult_boost"),
-                rs.getLong("mult_ticks"),
+                multTicks,
+                fuelTotal,
+                multTotal,
                 rs.getLong("last_active"),
                 rs.getString("island_id"),
                 rs.getString("upgrade1"),

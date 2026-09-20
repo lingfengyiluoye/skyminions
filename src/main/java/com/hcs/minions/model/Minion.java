@@ -2,10 +2,12 @@ package com.hcs.minions.model;
 
 import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.upgrade.MinionUpgradeType;
+import com.hcs.minions.util.Bars;
 import com.hcs.minions.util.GuiLayout;
 import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemCodec;
 import com.hcs.minions.util.ItemRef;
+import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialGuide;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Roman;
@@ -110,10 +112,14 @@ public final class Minion {
     private volatile int level;
     private volatile BlockLocation location;
     private volatile long fuelTicks;
+    /** 本轮限时燃料已装入总 tick（进度条分母；燃料耗尽/卸下时归零）。 */
+    private volatile long fuelTotalTicks;
     private volatile double fuelBoost = 1.0;
     /** 产量倍率燃料（催化剂类）：值与剩余时长，仅在线处理时衰减。 */
     private volatile double multBoost = 1.0;
     private volatile long multTicks;
+    /** 本轮催化剂已装入总 tick（进度条分母；倍率归零时清空）。 */
+    private volatile long multTotalTicks;
     private volatile double permanentBoost = 1.0;
     private volatile boolean autoSell;
     private volatile long totalProduced;
@@ -139,6 +145,8 @@ public final class Minion {
     private volatile Runnable dirtyHook;
     /** 上次为观看中的 GUI 刷新状态卡的时间（每秒一次，节流用）。 */
     private volatile long lastGuiRefreshTick;
+    /** 主人显示名缓存（GUI 渲染每帧都会读，避免重复 getOfflinePlayer 查询）。 */
+    private volatile String ownerNameCache;
 
     /** 注册落库钩子（仓库缓存层在仆从入缓存时调用）。 */
     public void setDirtyHook(Runnable hook) {
@@ -439,22 +447,50 @@ public final class Minion {
         }
     }
 
-    /** 信息卡（Hypixel 信息书风格）：文案来自 gui.yml（info.*），数据以占位符注入；
-     *  未配置稀有掉落时稀有行自动隐藏（可选行机制）。 */
+    /**
+     * 信息卡（Hypixel 仪表盘式）：状态首行 → 成对指标 → 一条分区线 → 累计/成长。
+     *
+     * <p>排版纪律（含标题与分隔线总行数 ≤10，常见形态 6~8 行）：
+     * <ul>
+     *   <li>状态独立第一行（红=停工/绿=运行），是玩家最常找的信息；</li>
+     *   <li>指标两两成行（速度/产出、范围/存储、累计/下次），标签统一两字保证 » 对齐；</li>
+     *   <li>进度条必须同维度：存储用「件/件」（当前件数 ÷ 格数×堆叠上限）；</li>
+     *   <li>颜色只有四类语义：红=异常、黄=注意/累计、绿=正常、白=中性数值、灰=标签；</li>
+     *   <li>可选行按状态显隐：停工时显示恢复提示、隐藏下次工作倒计时（停机时倒计时
+     *      不推进，显示反而误导）；无燃料时才显示燃料指引。</li>
+     * </ul>
+     */
     private ItemStack infoItem(MinionTypeConfig cfg) {
         double secondsPerAction = secondsPerAction(cfg, level);
         // 工作范围含范围扩展模块（与实际工作同口径，否则信息卡永远 5x5、玩家以为模块无效）
         int radius = com.hcs.minions.upgrade.UpgradeService.radiusWithExpander(
                 cfg.radiusFor(level), hasUpgrade(MinionUpgradeType.MINION_EXPANDER));
         int side = 2 * radius + 1;
+        boolean full = isStorageFull();
+
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
         v.put("tier", Roman.of(level));
-        v.put("speed", String.format("%.1f", secondsPerAction));
+        v.put("speed", trimNumber(secondsPerAction));
         v.put("rate", String.valueOf(itemsPerHour(secondsPerAction, cfg.harvestCap())));
         v.put("range", side + "x" + side);
-        v.put("storage", String.valueOf(storageCount()));
-        v.put("slots", String.valueOf(unlockedSlots()));
+        // 存储进度条（同维度：件/件 = 当前件数 ÷ 已解锁格 × 该产物堆叠上限）
+        long stored = storageCount();
+        long capacity = (long) unlockedSlots() * Math.max(1, cfg.product().getMaxStackSize());
+        v.put("storage", Bars.fraction(stored, capacity, "件"));
+        v.put("storage_bar", Bars.colored(stored, capacity));
+        v.put("total", String.valueOf(totalProduced));
+        if (full) {
+            v.put("status", GuiText.raw("info.status-halted", Map.of()));
+            v.put("halted_tip", GuiText.raw("info.halted-tip", Map.of()));
+            // 停机时不显示「下次工作」倒计时（scheduleNext 不推进，显示了反而误导），
+            // 但必须注入空串而非省略：省略会让「累计」行被可选行机制一起隐藏
+            v.put("next_pair", "");
+        } else {
+            v.put("status", GuiText.raw("info.status-working", Map.of()));
+            // 运行中才显示下次工作倒计时
+            v.put("next_pair", GuiText.raw("info.next-pair", Map.of("next", String.valueOf(nextWorkSeconds()))));
+        }
         if (cfg.hasRareDrop()) {
             v.put("rare", MaterialNames.of(cfg.rareDrop()));
             v.put("rare_chance", String.format("%.2f", cfg.rareDropChance() * 100));
@@ -466,15 +502,16 @@ public final class Minion {
                 v.put("unlock_mats", namesOf(cfg.unlocksAt(next)));
             }
         }
-        if (isStorageFull()) {
-            v.put("status", "<red>⚠ 仓库已满 · 停工中</red>");
-            v.put("halted_tip", ""); // 可选行：停工时追加恢复提示
-        } else {
-            v.put("status", "<green>● 工作中</green>");
+        if (permanentBoost() <= 1.0 && fuelTicks() <= 0) {
+            // 仅在「完全无燃料」时给一行指引：有燃料时这是噪音
+            v.put("hint", GuiText.raw("info.fuel-hint", Map.of()));
         }
-        v.put("total", String.valueOf(totalProduced));
-        v.put("next", String.valueOf(nextWorkSeconds()));
         return named(GuiLayout.material("storage.info.material"), GuiText.title("info.title", v), GuiText.lore("info.lore", v));
+    }
+
+    /** 数字去多余的 .0（2.0 → 2），保持仪表盘紧凑。 */
+    private static String trimNumber(double d) {
+        return d == Math.floor(d) ? String.valueOf((long) d) : String.format("%.1f", d);
     }
 
     /** 纯函数：指定等级下的单次工作秒数（含燃料加成），供当前/下一级对比。 */
@@ -524,35 +561,75 @@ public final class Minion {
     }
 
     private ItemStack headItem(MinionTypeConfig cfg) {
-        String ownerName = Bukkit.getOfflinePlayer(owner).getName();
         Map<String, String> v = new LinkedHashMap<>();
         v.put("name", cfg.displayName());
         v.put("tier", Roman.of(level));
-        v.put("owner", ownerName == null ? "?" : ownerName);
+        v.put("owner", ownerName());
         v.put("skin", skin.displayName());
         return named(type().icon(), GuiText.title("head.title", v), GuiText.lore("head.lore", v));
+    }
+
+    /**
+     * 主人显示名（缓存）：Bukkit.getOfflinePlayer#getName 对未缓存 UUID 可能阻塞，
+     * 本方法在 region 线程被 refresh() 反复调用，缓存后每次 GUI 刷新零查询；
+     * 解析失败（问号）不缓存，下次重试（玩家数据可能在启动顺序中稍后就绪）。
+     */
+    private String ownerName() {
+        String cached = ownerNameCache;
+        if (cached != null) {
+            return cached;
+        }
+        String name = null;
+        try {
+            name = Bukkit.getOfflinePlayer(owner).getName();
+        } catch (RuntimeException e) {
+            Logs.warn("查询仆从主人名称失败 owner={}: {}", owner, e.getMessage());
+        }
+        if (name != null) {
+            ownerNameCache = name;
+        }
+        return name == null ? "?" : name;
     }
 
     /** 燃料槽占位提示物品 PDC 键（与真燃料区分，避免关闭 GUI 时被误当燃料消耗）。 */
     private static final NamespacedKey FUEL_HINT_KEY = new NamespacedKey("skyminions", "fuel_hint");
 
-    /** 燃料槽状态卡（文案来自 gui.yml fuel.*）：限时/永久状态行为可选行按实际状态显隐；
-     *  图标随状态变化（无燃料=煤炭，限时=烈焰棒，永久=岩浆桶），空手点击可查看燃料指引。 */
+    /**
+     * 燃料槽状态卡（仪表盘式）：只放状态与进度，不放操作说明书。
+     *
+     * <pre>
+     * 限时 » 45/64 分钟 ▮▮▮▮▮▮▮▯▯▯   （限时燃料：剩余/总量 同维度）
+     * 永久 » 加速 +35%              （永久燃料，无时长）
+     * 倍率 » ×2.0 · 12/15 分钟 ▮▮▮▮▮▮▮▯▯▯  （催化剂轴）
+     * ────────
+     * 空手点击查看指引 · 手持燃料点击即生效   （唯一一行常驻提示）
+     * </pre>
+     *
+     * <p>「能装什么/怎么装」的完整说明在空手点击打开的燃料指引里，不常驻卡片。</p>
+     */
     private ItemStack fuelDisplay() {
         Map<String, String> v = new LinkedHashMap<>();
-        if (permanentBoost > 1.0) {
-            v.put("perm", String.valueOf((int) ((permanentBoost - 1) * 100)));
-        }
         if (fuelTicks > 0) {
-            v.put("left", String.valueOf(fuelTicks / 20));
-            v.put("timed", String.valueOf((int) ((Math.max(fuelBoost, 1.0) - 1) * 100)));
+            long total = Math.max(fuelTotalTicks, fuelTicks);
+            v.put("left", GuiText.raw("fuel.left-line", Map.of(
+                    "boost", String.valueOf((int) ((Math.max(fuelBoost, 1.0) - 1) * 100)),
+                    "fraction", Bars.fractionTicks(fuelTicks, total),
+                    "bar", Bars.colored(fuelTicks, total))));
+        }
+        if (permanentBoost > 1.0) {
+            v.put("perm", GuiText.raw("fuel.perm-line", Map.of(
+                    "perm", String.valueOf((int) ((permanentBoost - 1) * 100)))));
         }
         if (multBoost > 1.0) {
-            v.put("mult", "×" + (multBoost == Math.floor(multBoost)
-                    ? String.valueOf((long) multBoost) : String.valueOf(multBoost)));
+            long total = Math.max(multTotalTicks, multTicks);
+            v.put("mult", GuiText.raw("fuel.mult-line", Map.of(
+                    "mult", "×" + (multBoost == Math.floor(multBoost)
+                            ? String.valueOf((long) multBoost) : String.valueOf(multBoost)),
+                    "fraction", Bars.fractionTicks(multTicks, total),
+                    "bar", Bars.colored(multTicks, total))));
         }
         if (permanentBoost <= 1.0 && fuelTicks <= 0) {
-            v.put("nofuel", "");
+            v.put("nofuel", ""); // 可选行：完全无燃料时显示
         }
         Material icon = permanentBoost > 1.0 ? Material.LAVA_BUCKET
                 : fuelTicks > 0 ? Material.BLAZE_ROD : Material.COAL;
@@ -584,31 +661,41 @@ public final class Minion {
         v.put("speed_now", String.format("%.1f", secondsPerAction(cfg, level)));
         v.put("speed_next", String.format("%.1f", secondsPerAction(cfg, level + 1)));
         if (requireBody) {
-            v.put("body", "<dark_gray>· <aqua>仆从本体</aqua> <white>×1</white> <gray>（同类型当前等级）</gray>");
+            v.put("body", GuiText.raw("upgrade.body-line", Map.of()));
         }
         int row = 1;
+        int shown = 0;
+        // enough 必须按完整配方判定（不是只看展示行）：否则材料种类 >4 时按钮显示
+        // "材料充足" 但实际缺料，玩家点了打不开/合成失败，属于误导性 UI
         for (Map.Entry<ItemRef, Long> e : recipe.entrySet()) {
-            if (row > 4) {
-                break; // GUI 最多展示 4 行材料
-            }
             long owned = countInStorage(e.getKey());
             if (owned < e.getValue()) {
                 enough = false;
             }
-            v.put("m" + row, recipeLine(e.getKey(), e.getValue(), owned));
+            if (row <= 4) {
+                v.put("m" + row, recipeLine(e.getKey(), e.getValue(), owned));
+                shown++;
+            }
             row++;
+        }
+        if (shown < recipe.size()) {
+            // 超出 4 行的材料在按钮上不可见：显式告知总数，避免玩家以为配方只有看到的几项
+            v.put("more", GuiText.raw("upgrade.more-line",
+                    Map.of("count", String.valueOf(recipe.size()))));
         }
         String key = enough ? "upgrade" : "upgrade-lack";
         return named(GuiLayout.material("storage.upgrade.material-" + (enough ? "ok" : "lack")),
                 GuiText.title(key + ".title", v), GuiText.lore(key + ".lore", v));
     }
 
-    /** 单行材料对比（MiniMessage 片段）：材料名颜色随足够与否变化，悬浮显示获取指引。 */
+    /** 单行材料对比（MiniMessage 片段，模板来自 gui.yml）：材料名颜色随足够与否变化。 */
     private static String recipeLine(ItemRef ref, long need, long owned) {
-        String nameColor = owned >= need ? "<green>" : "<red>";
-        String inner = "<dark_gray>· " + nameColor + ref.displayName() + " <white>×" + need + "</white>"
-                + " <gray>已有 " + owned;
-        return MaterialGuide.wrapHover(ref.guideMaterial(), inner);
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("color", owned >= need ? "<green>" : "<red>");
+        v.put("name", ref.displayName());
+        v.put("need", String.valueOf(need));
+        v.put("owned", String.valueOf(owned));
+        return MaterialGuide.wrapHover(ref.guideMaterial(), GuiText.raw("upgrade.material-line", v));
     }
 
     private ItemStack upgradeSlotItem(MinionUpgradeType upgrade, int n, boolean unlocked) {
@@ -683,8 +770,17 @@ public final class Minion {
         return fuelTicks;
     }
 
+    /** 本轮限时燃料已装入总 tick（GUI 进度条分母；0 = 无燃料）。 */
+    public long fuelTotalTicks() {
+        return fuelTotalTicks;
+    }
+
     public void setFuelTicks(long fuelTicks) {
         this.fuelTicks = fuelTicks;
+        if (fuelTicks <= 0) {
+            // 燃料见底/被卸下：总量同步归零，避免下次装入时分数带上一轮的残差
+            this.fuelTotalTicks = 0;
+        }
         markDirty();
     }
 
@@ -713,9 +809,13 @@ public final class Minion {
         }
         if (fuelTicks <= 0) {
             this.fuelBoost = boost;
-        } else if (boost != this.fuelBoost) {
-            // 剩余 10 分钟 +30% 续入 60 分钟 +10% → 加权平均，经济上等价交换不产生套利
-            this.fuelBoost = (fuelTicks * this.fuelBoost + duration * boost) / (double) (fuelTicks + duration);
+            this.fuelTotalTicks = duration;
+        } else {
+            if (boost != this.fuelBoost) {
+                // 剩余 10 分钟 +30% 续入 60 分钟 +10% → 加权平均，经济上等价交换不产生套利
+                this.fuelBoost = (fuelTicks * this.fuelBoost + duration * boost) / (double) (fuelTicks + duration);
+            }
+            this.fuelTotalTicks += duration;
         }
         this.fuelTicks += duration;
         markDirty();
@@ -738,6 +838,8 @@ public final class Minion {
         if (multiplier > this.multBoost) {
             this.multBoost = multiplier;
             this.multTicks = durationTicks;
+            // 催化剂为「替换」语义（不叠加）：装入量即总量，进度条分母随之确定
+            this.multTotalTicks = durationTicks;
             markDirty();
             return true;
         }
@@ -754,6 +856,11 @@ public final class Minion {
         return multTicks;
     }
 
+    /** 本轮催化剂已装入总 tick（GUI 进度条分母；0 = 无）。 */
+    public long multTotalTicks() {
+        return multTotalTicks;
+    }
+
     /** 在线处理时衰减倍率时长；归零自动复位 1.0。 */
     public void tickMultiplier(long decayTicks) {
         if (multTicks <= 0) {
@@ -763,6 +870,7 @@ public final class Minion {
         if (multTicks <= 0) {
             multTicks = 0;
             multBoost = 1.0;
+            multTotalTicks = 0; // 分母同步清空，避免残留旧会话的总量
         }
         markDirty();
     }
@@ -969,7 +1077,9 @@ public final class Minion {
         return new MinionData(
                 id, owner, typeKey, level,
                 location.world(), location.x(), location.y(), location.z(),
-                fuelTicks, fuelBoost, multBoost, multTicks, lastActiveEpochMs, islandId,
+                fuelTicks, fuelBoost, multBoost, multTicks,
+                fuelTotalTicks, multTotalTicks,
+                lastActiveEpochMs, islandId,
                 upgrade1 == null ? null : upgrade1.key(),
                 upgrade2 == null ? null : upgrade2.key(),
                 upgrade3 == null ? null : upgrade3.key(),
@@ -988,8 +1098,13 @@ public final class Minion {
                 d.fuelTicks(), d.lastActiveEpochMs(), d.islandId()
         );
         m.setFuelBoost(Math.max(1.0, d.fuelBoost()));
+        // 旧存档没有总量字段：用「剩余」兜底（条显示满格），新存档按真实总量恢复
+        m.fuelTotalTicks = d.fuelTicks() > 0
+                ? Math.max(d.fuelTotalTicks(), d.fuelTicks())
+                : 0;
         if (d.multTicks() > 0 && d.multBoost() > 1.0) {
             m.addMultiplier(d.multBoost(), d.multTicks());
+            m.multTotalTicks = Math.max(d.multTotalTicks(), d.multTicks());
         }
         // 必须先装模块再灌仓库：storage 容量依赖储物箱模块（unlockedSlots），
         // 若先 setStorageItems 时模块尚未装上，超出基础容量的物品会被当溢出丢弃（数据丢失）。

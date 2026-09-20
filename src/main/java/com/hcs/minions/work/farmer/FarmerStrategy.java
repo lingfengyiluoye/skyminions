@@ -1,6 +1,7 @@
 package com.hcs.minions.work.farmer;
 
 import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.work.ChunkGuard;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.SimHarvest;
 import com.hcs.minions.work.WorkContext;
@@ -49,10 +50,15 @@ public final class FarmerStrategy implements MinionWorkStrategy {
         Map<Material, Integer> counts = new LinkedHashMap<>();
         Block anchor = ctx.anchor();
         int r = ctx.radius();
+        // 范围扩展后半径可跨区块：未加载列跳过（与矿工同一口径）
+        boolean[][] loaded = ChunkGuard.loaded(ctx.world(), anchor, r);
         int total = 0;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dz = -r; dz <= r; dz++) {
+                    if (!ChunkGuard.isLoaded(loaded, dx, dz, r)) {
+                        continue;
+                    }
                     Block b = anchor.getRelative(dx, dy, dz);
                     if (isMatureCrop(b, allowed)) {
                         counts.merge(b.getType(), 1, Integer::sum);

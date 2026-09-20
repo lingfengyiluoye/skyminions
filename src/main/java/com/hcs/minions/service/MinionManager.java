@@ -10,10 +10,12 @@ import com.hcs.minions.repository.MinionRepository;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.UpgradeService;
 import com.hcs.minions.util.AsyncExecutor;
+import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.MaterialNames;
 import com.hcs.minions.util.Messages;
 import com.hcs.minions.util.PlayerTasks;
+import com.hcs.minions.util.Sounds;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
@@ -32,6 +34,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,7 +68,14 @@ public final class MinionManager {
     private final ConcurrentHashMap<UUID, Long> lastDebugLog = new ConcurrentHashMap<>();
     /** 主人 -> 仆从数 索引，O(1) 查询（替代全量 stream 计数）。 */
     private final ConcurrentHashMap<UUID, Integer> ownerCount = new ConcurrentHashMap<>();
+    /** 处于「休眠」（半径无人）状态的仆从 id：恢复运转时补发闲置窗产出。 */
+    private final Set<UUID> dormantIds = ConcurrentHashMap.newKeySet();
     private final Object placementLock = new Object();
+    /**
+     * 仆从从休眠恢复运转时的回调（离线结算入口，由组合根在装配期注入）。
+     * 用 volatile 回调而非直接持有 OfflineSettlement：两者的构造有先后依赖。
+     */
+    private volatile java.util.function.Consumer<Minion> onReactivate;
 
     private ScheduledTask tickTask;
     private ScheduledTask sellTask;
@@ -305,10 +315,19 @@ public final class MinionManager {
         double scanRadius = config.get().playerScanRadius();
         boolean playersNearby = scanRadius <= 0 || !world.getNearbyPlayers(center, scanRadius).isEmpty();
         if (!playersNearby) {
-            // 闲置（统一离线语义）：不实时工作，产出由主人上线时一次性结算；
+            // 闲置（统一离线语义）：不实时工作，产出由主人上线/恢复运转时一次性结算；
             // 名牌显示 ⏾ 闲置挂机中
             entities.refreshStatus(minion, MinionEntityService.PlateStatus.DORMANT);
+            dormantIds.add(minion.id());
             return;
+        }
+        // 休眠 → 运转 转换：补发这段闲置窗的产出（幂等，lastActive 指针保证不重复支付）。
+        // 覆盖「主人在线但走远」的盲区——join 结算路径只处理真正下线的时间
+        if (dormantIds.remove(minion.id())) {
+            java.util.function.Consumer<Minion> callback = onReactivate;
+            if (callback != null) {
+                callback.accept(minion);
+            }
         }
         // 在线处理期间持续推进 lastActive（30s 节流）：
         // 这是离线结算的"已支付指针"，必须与实时产出保持同步，否则会重复支付
@@ -348,6 +367,8 @@ public final class MinionManager {
             minion.setFuelTicks(remaining);
             if (remaining == 0) {
                 minion.setFuelBoost(1.0);
+                // 燃料耗尽要有提示音：否则玩家只会觉得"莫名变慢了"
+                PlayerTasks.run(plugin, minion.owner(), Sounds::fuelOut);
             }
         }
 
@@ -410,11 +431,13 @@ public final class MinionManager {
             } else {
                 PlayerTasks.run(plugin, minion.owner(), player -> player.sendMessage(rare));
             }
-            // 主人在线：Title 高光 + 挑战完成音（Hypixel 稀有时刻仪式感）
+            // 主人在线：Title 高光 + 挑战完成音（Hypixel 稀有时刻仪式感）；
+            // 文案走 gui.yml 模板（rare-drop.*），不再硬编码
             PlayerTasks.run(plugin, minion.owner(), ownerForFx -> {
                 com.hcs.minions.util.Fx.title(ownerForFx,
-                        "<light_purple>✦ 稀有掉落!</light_purple>",
-                        "<gray>" + MaterialNames.of(cfg.rareDrop()) + "</gray>");
+                        GuiText.title("rare-drop.title"),
+                        GuiText.title("rare-drop.subtitle",
+                                Map.of("name", MaterialNames.of(cfg.rareDrop()))));
                 com.hcs.minions.util.Fx.sound(ownerForFx, org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f);
             });
             if (config.get().debug()) {
@@ -455,6 +478,15 @@ public final class MinionManager {
             sell.sellAll(minion, hopperRatio);
         } else if (shouldAutoSell(minion) && minion.isStorageFull()) {
             sell.sellAll(minion);
+        }
+        // 工作音：只播给正在看这个仆从 GUI 的玩家——满岛几十个仆从同时收割时
+        // 不能变成噪音，但盯着界面时那声轻响是"仆从活着"的关键反馈
+        if (!minion.storage().getViewers().isEmpty()) {
+            for (var viewer : minion.storage().getViewers()) {
+                if (viewer instanceof Player p) {
+                    Sounds.harvest(p);
+                }
+            }
         }
         minion.markDirty();
     }
@@ -531,6 +563,7 @@ public final class MinionManager {
                 minion.type().key(), minion.level(),
                 minion.location().x(), minion.location().y(), minion.location().z(),
                 cfg == null ? 0 : cfg.radiusFor(minion.level()), minion.fuelTicks());
+        Sounds.place(player); // 放置是满足感最强的一刻，必须有声音确认
         Bukkit.getPluginManager().callEvent(new MinionPlacedEvent(minion, player));
         return true;
     }
@@ -564,26 +597,31 @@ public final class MinionManager {
     }
 
     public Minion remove(Minion minion, Player player) {
-        minions.remove(minion.id());
-        byLocation.remove(minion.location());
-        ownerCount.computeIfPresent(minion.owner(), (k, v) -> v <= 1 ? null : v - 1);
-        lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
-        sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
-        entities.despawn(minion);
-        repository.delete(minion.id());
-        Bukkit.getPluginManager().callEvent(new MinionRemovedEvent(minion, player));
-        return minion;
+        // 与 place() 共用 placementLock：ownerCount 的预占/回滚与 byLocation 占位
+        // 必须在同一把锁内完成，避免并发放置/拾取时计数错位
+        synchronized (placementLock) {
+            minions.remove(minion.id());
+            byLocation.remove(minion.location());
+            ownerCount.computeIfPresent(minion.owner(), (k, v) -> v <= 1 ? null : v - 1);
+            lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
+            dormantIds.remove(minion.id()); // 休眠集合同步清理，避免按 id 泄漏
+            sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
+            entities.despawn(minion);
+            repository.delete(minion.id());
+            Bukkit.getPluginManager().callEvent(new MinionRemovedEvent(minion, player));
+            return minion;
+        }
     }
 
     /** 右键小人打开仆从 GUI（仓库内联 + 燃料/升级/收集/拾取）。 */
     public void openGui(Player player, Minion minion) {
         if (!ready) {
-            player.sendMessage(Component.text("仆从系统正在加载，请稍后再试"));
+            player.sendMessage(Messages.loading());
             return;
         }
         MinionTypeConfig typeConfig = config.get().type(minion.type());
         if (typeConfig == null) {
-            player.sendMessage(Component.text("该仆从类型配置已失效，请联系管理员"));
+            player.sendMessage(Messages.typeConfigMissing());
             return;
         }
         minion.refresh(typeConfig, config.get().upgradeRequirePreviousBody());
@@ -596,21 +634,39 @@ public final class MinionManager {
     }
 
     /**
+     * 注入休眠恢复回调（离线结算）。组合根在装配期调用：
+     * 两者有构造先后依赖，故用 setter 而非构造参数。
+     */
+    public void setOnReactivate(java.util.function.Consumer<Minion> callback) {
+        this.onReactivate = callback;
+    }
+
+    /**
      * 清理孤儿实体：遍历所有世界，移除 PDC 标记了仆从 UUID 但内存中已无对应仆从数据的盔甲架。
      * 用于异常关闭后残留实体的运维兜底（正常实体 setPersistent(false)，重载后按数据自愈）。
+     *
+     * <p>实体移除必须在该实体自己的 region 线程执行（Folia），故先收集再逐个 dispatch；
+     * 返回值是「待移除数」，dispatch 为异步完成。</p>
      */
     public int purgeOrphans() {
-        int removed = 0;
+        List<ArmorStand> orphans = new ArrayList<>();
         for (World world : Bukkit.getWorlds()) {
             for (ArmorStand stand : world.getEntitiesByClass(ArmorStand.class)) {
                 UUID id = entities.minionIdOf(stand);
                 if (id != null && !minions.containsKey(id)) {
-                    stand.remove();
-                    removed++;
+                    orphans.add(stand);
                 }
             }
         }
-        return removed;
+        for (ArmorStand stand : orphans) {
+            Location at = stand.getLocation();
+            Bukkit.getRegionScheduler().run(plugin, at, task -> {
+                if (stand.isValid()) {
+                    stand.remove();
+                }
+            });
+        }
+        return orphans.size();
     }
 
     // ------------------------------------------------------------------
@@ -631,9 +687,10 @@ public final class MinionManager {
 
     /**
      * 运行时统计（/minion stats）：运行时长、调度周期数、稀有掉落次数、
-     * 放置数与全场累计产出。只读内存快照，任意线程可调。
+     * 放置数与全场累计产出。文案走 messages.yml 模板（stats-* 键），
+     * 只读内存快照，任意线程可调。
      */
-    public List<String> statsLines() {
+    public List<Component> statsLines() {
         long upMillis = startMillis <= 0 ? 0 : System.currentTimeMillis() - startMillis;
         long upSeconds = upMillis / 1000;
         long permNodes;
@@ -645,7 +702,7 @@ public final class MinionManager {
         }
         String uptime = upSeconds >= 3600
                 ? (upSeconds / 3600) + " 小时 " + (upSeconds % 3600) / 60 + " 分钟"
-                : (upSeconds / 60) + " 分钟 " + upSeconds % 60 + " 秒";
+                : upSeconds / 60 + " 分钟 " + upSeconds % 60 + " 秒";
         long totalProducedAll = 0;
         int working = 0;
         for (Minion m : minions.values()) {
@@ -655,15 +712,15 @@ public final class MinionManager {
                 working++;
             }
         }
-        List<String> out = new ArrayList<>();
-        out.add("运行时长: " + uptime);
-        out.add("调度周期数: " + tickCycles.get());
+        List<Component> out = new ArrayList<>();
+        out.add(Messages.statsUptime(uptime));
+        out.add(Messages.statsCycles(tickCycles.get()));
         if (permNodes >= 0) {
-            out.add("已注册权限节点: " + permNodes + " 个（minions.*）");
+            out.add(Messages.statsPermissions(permNodes));
         }
-        out.add("已放置仆从: " + minions.size() + " 个（工作中 " + working + "）");
-        out.add("稀有掉落累计: " + rareDropRolls.get() + " 次");
-        out.add("全场累计产出: " + totalProducedAll + " 件");
+        out.add(Messages.statsPlaced(minions.size(), working));
+        out.add(Messages.statsRareDrops(rareDropRolls.get()));
+        out.add(Messages.statsTotalProduced(totalProducedAll));
         return out;
     }
 }

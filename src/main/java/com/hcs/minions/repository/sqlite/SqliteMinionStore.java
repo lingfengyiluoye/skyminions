@@ -34,6 +34,8 @@ public final class SqliteMinionStore implements MinionStore {
               fuel_boost DOUBLE NOT NULL DEFAULT 1.0,
               mult_boost DOUBLE NOT NULL DEFAULT 1.0,
               mult_ticks BIGINT NOT NULL DEFAULT 0,
+              fuel_total_ticks BIGINT NOT NULL DEFAULT 0,
+              mult_total_ticks BIGINT NOT NULL DEFAULT 0,
               last_active BIGINT NOT NULL,
               island_id VARCHAR(36),
               upgrade1 VARCHAR(32),
@@ -49,13 +51,14 @@ public final class SqliteMinionStore implements MinionStore {
             """;
 
     private static final String UPSERT = """
-            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, last_active, island_id, upgrade1, upgrade2, upgrade3, upgrade4, skin, auto_sell, total_produced, permanent_boost, inventory)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO minions (id, owner, type, level, xp, world, x, y, z, fuel_ticks, fuel_boost, mult_boost, mult_ticks, fuel_total_ticks, mult_total_ticks, last_active, island_id, upgrade1, upgrade2, upgrade3, upgrade4, skin, auto_sell, total_produced, permanent_boost, inventory)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               owner=excluded.owner, type=excluded.type, level=excluded.level, xp=excluded.xp,
               world=excluded.world, x=excluded.x, y=excluded.y, z=excluded.z,
               fuel_ticks=excluded.fuel_ticks, fuel_boost=excluded.fuel_boost,
               mult_boost=excluded.mult_boost, mult_ticks=excluded.mult_ticks,
+              fuel_total_ticks=excluded.fuel_total_ticks, mult_total_ticks=excluded.mult_total_ticks,
               last_active=excluded.last_active,
               island_id=excluded.island_id, upgrade1=excluded.upgrade1, upgrade2=excluded.upgrade2,
               upgrade3=excluded.upgrade3, upgrade4=excluded.upgrade4,
@@ -110,6 +113,8 @@ public final class SqliteMinionStore implements MinionStore {
         addColumnIfMissing(st, existing, "fuel_boost", "DOUBLE NOT NULL", "1.0");
         addColumnIfMissing(st, existing, "mult_boost", "DOUBLE NOT NULL", "1.0");
         addColumnIfMissing(st, existing, "mult_ticks", "BIGINT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "fuel_total_ticks", "BIGINT NOT NULL", "0");
+        addColumnIfMissing(st, existing, "mult_total_ticks", "BIGINT NOT NULL", "0");
         addColumnIfMissing(st, existing, "auto_sell", "INT NOT NULL", "0");
         addColumnIfMissing(st, existing, "total_produced", "BIGINT NOT NULL", "0");
         addColumnIfMissing(st, existing, "permanent_boost", "DOUBLE NOT NULL", "1.0");
@@ -236,6 +241,8 @@ public final class SqliteMinionStore implements MinionStore {
         ps.setDouble(i++, d.fuelBoost());
         ps.setDouble(i++, d.multBoost());
         ps.setLong(i++, d.multTicks());
+        ps.setLong(i++, d.fuelTotalTicks());
+        ps.setLong(i++, d.multTotalTicks());
         ps.setLong(i++, d.lastActiveEpochMs());
         ps.setString(i++, d.islandId());
         ps.setString(i++, d.upgrade1());
@@ -250,6 +257,18 @@ public final class SqliteMinionStore implements MinionStore {
     }
 
     private static MinionData map(ResultSet rs) throws Exception {
+        long fuelTicks = rs.getLong("fuel_ticks");
+        long multTicks = rs.getLong("mult_ticks");
+        // 旧库无总量列时 getLong 抛错 → 回退为剩余量（条显示满格）
+        long fuelTotal;
+        long multTotal;
+        try {
+            fuelTotal = rs.getLong("fuel_total_ticks");
+            multTotal = rs.getLong("mult_total_ticks");
+        } catch (java.sql.SQLException e) {
+            fuelTotal = fuelTicks;
+            multTotal = multTicks;
+        }
         return new MinionData(
                 UUID.fromString(rs.getString("id")),
                 UUID.fromString(rs.getString("owner")),
@@ -257,10 +276,12 @@ public final class SqliteMinionStore implements MinionStore {
                 rs.getInt("level"),
                 rs.getString("world"),
                 rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
-                rs.getLong("fuel_ticks"),
+                fuelTicks,
                 rs.getDouble("fuel_boost"),
                 rs.getDouble("mult_boost"),
-                rs.getLong("mult_ticks"),
+                multTicks,
+                fuelTotal,
+                multTotal,
                 rs.getLong("last_active"),
                 rs.getString("island_id"),
                 rs.getString("upgrade1"),

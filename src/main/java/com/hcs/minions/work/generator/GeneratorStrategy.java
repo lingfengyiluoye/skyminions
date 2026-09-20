@@ -5,6 +5,7 @@ import com.hcs.minions.work.BlockOps;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.WorkContext;
 import com.hcs.minions.work.WorkOutcome;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -33,7 +34,7 @@ public final class GeneratorStrategy implements MinionWorkStrategy {
     @Override
     public WorkOutcome performWork(WorkContext ctx) {
         // 优先采集已生成的圆石
-        Optional<Block> cobble = ctx.searcher().find(ctx.world(), ctx.anchor(), ctx.radius(),
+        Optional<Block> cobble = ctx.searcher().find(ctx.anchor(), ctx.radius(),
                 b -> b.getType() == Material.COBBLESTONE, ctx.minion());
         if (cobble.isPresent()) {
             List<ItemStack> drops = BlockOps.breakAndCollect(cobble.get());
@@ -41,13 +42,26 @@ public final class GeneratorStrategy implements MinionWorkStrategy {
             return new WorkOutcome(true, xp, drops);
         }
         // 无圆石可采：在固体上方空气位生成一块（本次无产出，下次工作采集）
-        Optional<Block> slot = ctx.searcher().find(ctx.world(), ctx.anchor(), ctx.radius(),
+        Optional<Block> slot = ctx.searcher().find(ctx.anchor(), ctx.radius(),
                 b -> b.getType().isAir() && b.getRelative(BlockFace.DOWN).getType().isSolid(),
                 ctx.minion());
         if (slot.isPresent()) {
-            slot.get().setType(Material.COBBLESTONE);
+            Block target = slot.get();
+            if (occupied(target)) {
+                // 该位置有玩家/生物站立：不生成圆石，避免把玩家卡住或堵路
+                return WorkOutcome.IDLE;
+            }
+            target.setType(Material.COBBLESTONE);
             return new WorkOutcome(true, 0, List.of());
         }
         return WorkOutcome.IDLE;
+    }
+
+    /** 目标方块内是否有生物（玩家/怪物）——生成前避让，防止卡住实体。 */
+    private static boolean occupied(Block block) {
+        Location center = block.getLocation().add(0.5, 0.5, 0.5);
+        return !block.getWorld()
+                .getNearbyEntities(center, 0.5, 0.9, 0.5)
+                .isEmpty();
     }
 }

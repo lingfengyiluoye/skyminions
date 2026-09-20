@@ -29,6 +29,9 @@ public final class Textures {
             }
             return URI.create(json.substring(i, j)).toURL();
         } catch (Exception e) {
+            // 无效 base64/非法 URL：留一条 debug 便于服主排查 config 的 head-texture
+            Logs.debug("头颅纹理解析失败（{}），该皮肤将回退默认贴图: {}",
+                    texture.length() + " chars", e.getMessage());
             return null;
         }
     }

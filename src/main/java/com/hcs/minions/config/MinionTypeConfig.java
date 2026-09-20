@@ -55,6 +55,8 @@ public record MinionTypeConfig(
         Material rareDrop,
         double rareDropChance,
         long unlockAmount,
+        /** 解锁金币门槛：收集达标后首次放置时缴纳（0 = 不收费；每玩家每类型只收一次）。 */
+        long unlockCost,
     /** 指定等级的配方整行覆盖（稀有掉落回流载体）：键 = 升级前等级，值 = 该级完整配方。 */
     Map<Integer, Map<ItemRef, Long>> recipeOverrides,
         /** 战斗型定向目标（实体类型名集合，空 = 任意敌对）。 */
@@ -101,11 +103,19 @@ public record MinionTypeConfig(
         if (unlockAmount < 0) {
             unlockAmount = 0;
         }
+        if (unlockCost < 0) {
+            unlockCost = 0;
+        }
     }
 
     /** 是否配置了收集解锁门槛（还需全局开关开启才实际生效）。 */
     public boolean hasUnlockRequirement() {
         return unlockAmount > 0;
+    }
+
+    /** 是否配置了金币解锁门槛（首次放置时缴纳一次）。 */
+    public boolean hasUnlockCost() {
+        return unlockCost > 0;
     }
 
     /** 是否配置了专属稀有掉落。 */

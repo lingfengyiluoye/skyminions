@@ -17,47 +17,53 @@
 # GUI 顶部标题。占位符: {name}=类型中文名（类型名本身已含"仆从"后缀，直接展示）
 title: "{name}"
 
-# 信息书(槽6)。占位符: {name} {tier} {speed}=秒/次 {rate}=件/小时 {range}=范围
-#   {storage}=仓存件数 {slots}=已解锁格数 {total}=累计产出 {next}=距下次工作秒数 {status}=状态行
+# 信息书(槽3)。占位符: {name} {tier} {speed}=秒/次 {rate}=件/时 {range}=范围
+#   {storage}=同维度分数(当前件/容量件) {storage_bar}=进度条 {total}=累计产出 {status}=状态行
+#   {next_pair}=「下次工作」右半行（停机时不注入，整行不渲染）
 #   可选: {rare}=稀有掉落物 {rare_chance}=几率%(仅配置了稀有掉落的类型提供)
 #   可选: {halted_tip} 停工恢复提示行（仅仓库满停工时显示）
+#   可选: {hint} 燃料指引行（仅完全无燃料时显示）
 #   可选: {next_tier}+{unlock_mats} 下一档解锁行（仅配置 targets-by-tier 且仍有未解锁档时显示）
+# 排版纪律: 含标题总行数 ≤10; 颜色只用 红=异常/黄=累计/绿=正常/白=数值/灰=标签(+light_purple=稀有)
 info:
   title: "<gradient:#FFD54A:#FF9C2A>✦ {name}</gradient> <gray>·</gray> <yellow>等级 {tier}</yellow>"
+  # 状态行（作为 lore 中 {status} 占位符的值注入）
+  status-halted: "<red>⚠ 仓库已满 · 停工中</red>"
+  status-working: "<green>✅ 运行中</green>"
+  # 停工恢复提示 / 下次工作右半行 / 无燃料时的指引行
+  halted-tip: "<gray>取货或开启自动售卖后恢复工作</gray>"
+  next-pair: "   <gray>下次</gray> <dark_gray>»</dark_gray> <white>{next} 秒</white>"
+  fuel-hint: "<dark_gray>空手点击燃料槽查看燃料指引</dark_gray>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
-    - "<gray>状态</gray> <dark_gray>»</dark_gray> {status}"
-    - ""
-    - "<gray>速度</gray> <dark_gray>»</dark_gray> <green>{speed}</green> <dark_gray>秒/次</dark_gray>"
-    - "<gray>产出</gray> <dark_gray>»</dark_gray> <green>≈ {rate}</green> <dark_gray>件/小时</dark_gray>"
-    - "<gray>范围</gray> <dark_gray>»</dark_gray> <aqua>{range}</aqua>"
-    - "<gray>存储</gray> <dark_gray>»</dark_gray> <white>{storage}</white> <dark_gray>件 /</dark_gray> <white>{slots}</white> <dark_gray>格</dark_gray>"
-    - "<gray>{next_tier} 级解锁</gray> <dark_gray>»</dark_gray> <yellow>{unlock_mats}</yellow>"
-    - "<gray>稀有掉落</gray> <dark_gray>»</dark_gray> <light_purple>{rare}</light_purple> <dark_gray>({rare_chance}%)</dark_gray>"
-    - "<dark_gray>取货或开启自动售卖后恢复工作{halted_tip}</dark_gray>"
-    - ""
-    - "<gray>累计产出</gray> <dark_gray>»</dark_gray> <yellow>{total}</yellow> <dark_gray>件</dark_gray>"
-    - "<gray>下次工作</gray> <dark_gray>»</dark_gray> <green>{next}s</green>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "{status}"
+    - "<gray>速度</gray> <dark_gray>»</dark_gray> <white>{speed} 秒/次</white>   <gray>产出</gray> <dark_gray>»</dark_gray> <white>约 {rate} 件/时</white>"
+    - "<gray>范围</gray> <dark_gray>»</dark_gray> <white>{range}</white>   <gray>存储</gray> <dark_gray>»</dark_gray> <white>{storage}</white> {storage_bar}"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+    - "<yellow>累计</yellow> <dark_gray>»</dark_gray> <yellow>{total} 件</yellow>{next_pair}"
+    - "<gray>稀有</gray> <dark_gray>»</dark_gray> <light_purple>{rare}</light_purple> <dark_gray>({rare_chance}%)</dark_gray>"
+    - "<gray>{next_tier} 级解锁</gray> <dark_gray>»</dark_gray> <white>{unlock_mats}</white>"
+    - "{halted_tip}"
+    - "{hint}"
 
 # 仆从头颅(槽4)。占位符: {name} {tier} {owner}=主人名 {skin}=皮肤名
 head:
   title: "<gradient:#FFE98A:#FFB347>{name}</gradient> <gray>·</gray> <yellow>等级 {tier}</yellow>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>主人</gray> <dark_gray>»</dark_gray> <white>{owner}</white>"
     - "<gray>皮肤</gray> <dark_gray>»</dark_gray> <light_purple>{skin}</light_purple>"
     - ""
     - "<dark_gray>放置于私岛自动采集资源</dark_gray>"
     - "<yellow>右键</yellow> <gray>打开仓库</gray> <dark_gray>·</dark_gray> <yellow>潜行右键</yellow> <gray>拾取</gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
 
 # 升级按钮(槽5) - 材料充足。占位符: {tier}=目标等级 {speed_now} {speed_next}=秒/次
 #   {m1}~{m4}=逐行材料对比(需求/已有, 行内自带颜色), 配方不足时多余行自动隐藏
+#   可选 {more}=材料种类超过 4 行时的补充提示（材料充足判定仍按完整配方）
 upgrade:
   title: "<green>⬆ 升级到等级 {tier}</green>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>速度</gray> <dark_gray>»</dark_gray> <gray>{speed_now}s</gray> <dark_gray>➜</dark_gray> <green>{speed_next}s</green>"
     - ""
     - "<gray>所需材料</gray>"
@@ -66,14 +72,15 @@ upgrade:
     - "{m3}"
     - "{m4}"
     - "{body}"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "{more}"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<green>✔ 材料充足</green> <dark_gray>·</dark_gray> <yellow>点击合成 ▶</yellow>"
 
 # 升级按钮(槽5) - 材料不足。占位符同 upgrade
 upgrade-lack:
   title: "<yellow>⬆ 升级到等级 {tier}</yellow>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>速度</gray> <dark_gray>»</dark_gray> <gray>{speed_now}s</gray> <dark_gray>➜</dark_gray> <green>{speed_next}s</green>"
     - ""
     - "<gray>所需材料</gray>"
@@ -82,96 +89,108 @@ upgrade-lack:
     - "{m3}"
     - "{m4}"
     - "{body}"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "{more}"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<yellow>点击打开合成界面</yellow> <dark_gray>（材料放入合成格）</dark_gray>"
 
 # 升级按钮(槽5) - 已满级。占位符: {tier}=最大等级
 upgrade-max:
   title: "<gold>✦ 已满级</gold>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>已达最高等级</gray> <dark_gray>»</dark_gray> <gold>{tier}</gold>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+
+# 升级按钮内的「行内嵌行」片段：渲染成 MiniMessage 串后注入 upgrade.lore 的 {m1}~{m4}/{body}/{more}
+#   material-line 占位符: {color}=<green>/<red> {name} {need} {owned}
+#   more-line 占位符: {count}=材料种类总数
+upgrade:
+  material-line: "<dark_gray>· {color}{name} <white>×{need}</white> <gray>已有 {owned}</gray>"
+  body-line: "<dark_gray>· <aqua>仆从本体</aqua> <white>×1</white> <gray>（同类型当前等级）</gray>"
+  more-line: "<dark_gray>…等共 {count} 种材料（点击打开合成界面查看）</dark_gray>"
 
 # 燃料槽状态卡(槽0, 按钮)。图标随状态: 无燃料=煤炭 / 限时生效中=烈焰棒 / 永久生效中=岩浆桶。
 # 交互: 手持有效燃料点击此槽立即生效(限时整组、永久仅1个); 空手点击查看燃料指引。占位符:
 #   可选: {perm}=永久加速百分比(仅佩戴永久燃料时提供)
 #         {left}=限时剩余秒 {timed}=限时加速百分比(仅限时燃料生效时提供)
 #         {nofuel}=空占位(仅完全无燃料时提供, 用于条件显示提示行)
+# 燃料槽状态卡(槽0, 按钮)。只放状态与进度，操作说明不放卡片（空手点击有完整指引）。
+#   图标随状态: 无燃料=煤炭 / 限时生效中=烈焰棒 / 永久生效中=岩浆桶
+#   行内嵌行片段（经 GuiText.raw 渲染后注入 {left}/{perm}/{mult}）:
+#     left-line  {boost}=加速% {fraction}=同维度分数(剩余/总量) {bar}=进度条
+#     perm-line  {perm}=永久加速%
+#     mult-line  {mult}=倍率 {fraction} {bar}
 fuel:
   title: "<gold>⛽ 燃料槽</gold>"
+  left-line: "<gray>限时</gray> <dark_gray>»</dark_gray> <green>+{boost}%</green> <dark_gray>·</dark_gray> <white>{fraction}</white> {bar}"
+  perm-line: "<gray>永久</gray> <dark_gray>»</dark_gray> <green>加速 +{perm}%</green>"
+  mult-line: "<gray>倍率</gray> <dark_gray>»</dark_gray> <light_purple>{mult}</light_purple> <dark_gray>·</dark_gray> <white>{fraction}</white> {bar}"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
-    - "<gray>永久加速</gray> <dark_gray>»</dark_gray> <green>+{perm}%</green>"
-    - "<gray>限时剩余</gray> <dark_gray>»</dark_gray> <yellow>{left}s</yellow> <green>(+{timed}%)</green>"
-    - "<gray>产出倍率</gray> <dark_gray>»</dark_gray> <light_purple>{mult}</light_purple>"
+    - "{left}"
+    - "{perm}"
+    - "{mult}"
     - "<dark_gray>{nofuel}当前无燃料（仆从仍会工作）</dark_gray>"
-    - ""
-    - "<yellow>⚡ 手持燃料点击此槽 · 立即生效</yellow>"
-    - "<dark_gray>限时 »</dark_gray> <gray>煤炭 / 岩浆桶 / 烈焰棒</gray>"
-    - "<dark_gray>永久 »</dark_gray> <gray>岩浆膏 / 荧石粉 / 日光传感器</gray>"
-    - "<dark_gray>空手点击查看燃料指引 · 右键小人每次加 1 个</dark_gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<dark_gray>空手点击查看指引 · 手持燃料点击即生效</dark_gray>"
 
 # 皮肤卡(槽7)。占位符: {current}=当前皮肤 {next}=下一个皮肤(仅有多皮肤时提供)
 skin:
   title: "<light_purple>✎ 皮肤</light_purple>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>当前</gray> <dark_gray>»</dark_gray> <light_purple>{current}</light_purple>"
     - "<gray>下一个</gray> <dark_gray>»</dark_gray> <gray>{next}</gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<yellow>点击切换 ▶</yellow>"
 
 # 模块槽(槽2/3，头颅左侧，对齐 Hypixel) - 未解锁。占位符: {n}=槽序号 {tier}=解锁等级
 module-locked:
   title: "<dark_gray>🔒 模块槽 #{n}</dark_gray>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<red>✖ 未解锁</red>"
     - "<gray>升级到等级</gray> <yellow>{tier}</yellow> <gray>解锁</gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
 
 # 模块槽 - 已装备。占位符: {name}=模块名 {desc}=模块描述
 module-equipped:
   title: "<aqua>◈ {name}</aqua>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>{desc}</gray>"
     - ""
     - "<green>● 已装备</green>"
     - "<yellow>空手点击卸下 ▶</yellow>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
 
 # 模块槽 - 空。占位符: {n}=槽序号
 module-empty:
   title: "<gray>◇ 模块槽 #{n}</gray>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<dark_gray>○ 空槽</dark_gray>"
     - "<gray>手持模块物品点击装备</gray>"
     - "<dark_gray>可用 /minion upgrade 获取</dark_gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
 
 # 收集全部(槽49)。占位符: {count}=仓存件数
 collect:
   title: "<gold>✦ 收集全部</gold>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>当前仓存</gray> <dark_gray>»</dark_gray> <yellow>{count}</yellow> <dark_gray>件</dark_gray>"
     - "<dark_gray>将仓库所有物品转移到背包</dark_gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<yellow>点击收集 ▶</yellow>"
 
 # 拾取仆从(槽50)。无占位符
 pickup:
   title: "<red>✖ 拾取仆从</red>"
   lore:
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<gray>移除仆从并收回物品栏</gray>"
     - "<dark_gray>仓库、模块与皮肤会一并保留</dark_gray>"
     - "<dark_gray>潜行右键仆从也可拾取</dark_gray>"
-    - "<strikethrough><dark_gray>                    </strikethrough>"
+    - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     - "<yellow>点击拾取 ▶</yellow>"
 
 # 关闭(槽51)。无占位符
@@ -196,40 +215,38 @@ collection-gui:
     title: "<aqua>{sel}{name}</aqua>"
   # 已解锁卡片。占位符: {name} {category} {tier}=最高等级 {max_tier} {placed}=已放置数
   #   {produced}=总产出 {product}=产物名 {collected}=产物收集量
-  #   可选: {r1}~{r3}=下一级配方行（未满级时提供）
+  #   {collect_bar}=收集进度条(同维度: 已收集/下一里程碑) {collect_next}=下一里程碑(全部达成时为空, 不画条)
+  #   可选: {r1}~{r3}=下一级配方行（未满级时提供）; {more}=材料种类超出 3 行时的补充提示
+  # 排版纪律: 含标题 ≤12 行; 分类行不用 aqua（颜色只保留 红/黄/绿/白/灰/light_purple=稀有）
   card:
     title: "<gold>{name}</gold>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
-      - "<gray>分类</gray> <dark_gray>»</dark_gray> <aqua>{category}</aqua>"
-      - "<gray>已解锁等级</gray> <dark_gray>»</dark_gray> <yellow>{tier}</yellow> <dark_gray>/</dark_gray> <yellow>{max_tier}</yellow>"
-      - "<gray>已放置</gray> <dark_gray>»</dark_gray> <white>{placed}</white> <dark_gray>个</dark_gray>"
-      - "<gray>总产出</gray> <dark_gray>»</dark_gray> <yellow>{produced}</yellow> <dark_gray>件</dark_gray>"
-      - "<gray>{product} 收集</gray> <dark_gray>»</dark_gray> <yellow>{collected}</yellow>"
-      - ""
-      - "<gray>下一级配方</gray>"
+      - "<gray>分类</gray> <dark_gray>»</dark_gray> <white>{category}</white>   <gray>等级</gray> <dark_gray>»</dark_gray> <yellow>{tier}</yellow> <dark_gray>/</dark_gray> <yellow>{max_tier}</yellow>"
+      - "<gray>放置</gray> <dark_gray>»</dark_gray> <white>{placed} 个</white>   <gray>产出</gray> <dark_gray>»</dark_gray> <yellow>{produced} 件</yellow>"
+      - "<gray>收集</gray> <dark_gray>»</dark_gray> <white>{collected}/{collect_next}</white> {collect_bar}"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "{r1}"
       - "{r2}"
       - "{r3}"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "{more}"
       - "<yellow>点击打开升级合成界面 ▶</yellow>"
   # 未解锁卡片（???）。占位符: {category} {product} {collected} {need}
   locked:
     title: "<dark_gray>??? 未解锁</dark_gray>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
-      - "<gray>分类</gray> <dark_gray>»</dark_gray> <aqua>{category}</aqua>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+      - "<gray>分类</gray> <dark_gray>»</dark_gray> <white>{category}</white>"
       - ""
       - "<red>✖ 尚未解锁</red>"
       - "<gray>{product} 收集</gray> <dark_gray>»</dark_gray> <yellow>{collected}</yellow> <dark_gray>/</dark_gray> <white>{need}</white>"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
   prev:
     title: "<green>◀ 上一页</green>"
   next:
     title: "<green>下一页 ▶</green>"
-  # 底行进度卡。占位符: {unlocked}=已解锁类型数 {total}=类型总数 {page} {pages}
+  # 底行进度卡。占位符: {unlocked}=已解锁类型数 {total}=类型总数 {bar}=进度条 {page} {pages}
   progress:
-    title: "<gold>✦ 图鉴进度 {unlocked}/{total}</gold>"
+    title: "<gold>✦ 图鉴进度 {unlocked}/{total}</gold> {bar}"
     lore:
       - "<gray>第</gray> <white>{page}</white> <dark_gray>/</dark_gray> <white>{pages}</white> <gray>页</gray>"
       - "<dark_gray>收集资源解锁更多仆从类型</dark_gray>"
@@ -240,6 +257,15 @@ collection-gui:
     title: "<gray>尚未放置过该类型仆从，暂无升级记录</gray>"
   recipe-max:
     title: "<green>已达最高等级（{tier}）</green>"
+  # 卡片内的「行内嵌行」片段：渲染后注入 card.lore 的 {r1}~{r3}/{more}
+  card:
+    recipe-line: "<dark_gray>· {name} ×{need}</dark_gray>"
+    body-line: "<dark_gray>· {name} 等级 {tier} ×1</dark_gray>"
+    more-line: "<dark_gray>…等共 {count} 种材料（详见升级合成界面）</dark_gray>"
+  # 聊天栏配方详情（点击未放置/已满级类型的卡片时输出）
+  chat:
+    recipe-line: "<dark_gray>· <white>{name}</white> ×<yellow>{need}</yellow></dark_gray>"
+    body-line: "<dark_gray>· <white>{name}</white> 等级 <yellow>{tier}</yellow> ×1</dark_gray>"
 
 # ============================================================
 #  燃料选择 GUI（空手点击仆从燃料槽打开，3 行 27 格）
@@ -248,26 +274,28 @@ fuel-gui:
   title: "<gold>⛽ 选择燃料</gold>"
   empty:
     title: "<gray>背包中没有可用燃料</gray>"
+  close:
+    title: "<red>✖ 关闭</red>"
   # 燃料选项。占位符: {name} {boost}=加速% {mult}=产量倍率 {duration}=持续时间 {count}=背包数量
   option:
     title: "<yellow>{name}</yellow>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<gray>加速</gray> <dark_gray>»</dark_gray> <green>+{boost}%</green>"
       - "<gray>产出倍率</gray> <dark_gray>»</dark_gray> <light_purple>{mult}</light_purple>"
       - "<gray>持续</gray> <dark_gray>»</dark_gray> <white>{duration}</white> <dark_gray>/ 个</dark_gray>"
       - "<gray>背包数量</gray> <dark_gray>»</dark_gray> <yellow>{count}</yellow>"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<yellow>点击安装全部</yellow> <dark_gray>·</dark_gray> <yellow>潜行安装 1 个</yellow>"
   # 当前燃料状态卡。可选: {perm}=永久加速% {left}=限时剩余 {none}=无燃料时提供
   status:
     title: "<gold>当前燃料状态</gold>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<gray>永久加速</gray> <dark_gray>»</dark_gray> <green>+{perm}%</green>"
       - "<gray>限时剩余</gray> <dark_gray>»</dark_gray> <yellow>{left}</yellow>"
       - "<dark_gray>{none}当前无燃料</dark_gray>"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<dark_gray>潜行点击卸下限时燃料（永久不可卸下）</dark_gray>"
 
 # ============================================================
@@ -282,17 +310,19 @@ craft-gui:
   title: "<gold>⚒ 升级合成 · {name} 等级 {tier}</gold>"
   # 顶行配方信息卡。占位符: {tier}=当前等级 {next}=目标等级
   #   {m1}~{m4}=逐材料需求/已放对比行, 可选 {body}=本体需求行(仅开关开启时提供)
+  #   可选 {more}=材料种类超过 4 行时的补充提示（配方仍要求全部放入合成格）
   info:
     title: "<gold>✦ 升级配方 · 等级 {tier} ➜ {next}</gold>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<gray>所需材料</gray>"
       - "{m1}"
       - "{m2}"
       - "{m3}"
       - "{m4}"
       - "{body}"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "{more}"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<gray>把材料与本体放入左侧合成格</gray>"
       - "<yellow>材料齐后点击右侧产物合成 ▶</yellow>"
   # 结果槽占位（材料未集齐时显示）
@@ -301,18 +331,27 @@ craft-gui:
     lore:
       - "<gray>按左侧配方放入材料与本体</gray>"
       - "<yellow>潜行点击信息卡可一键填充</yellow>"
+  # 信息卡内的「行内嵌行」片段：渲染后注入 info.lore 的 {m1}~{m4}/{body}/{more}
+  #   material-line 占位符: {color}=<green>/<red> {name} {need} {placed}
+  material-line: "<dark_gray>· {color}{name} <white>×{need}</white> <gray>已放 {placed}</gray>"
+  body-line: "<dark_gray>· {color}仆从本体 <white>×1</white> <gray>已放 {placed}</gray>"
+  more-line: "<dark_gray>…等共 {count} 种材料（其余请直接放入合成格）</dark_gray>"
   arrow:
     title: "<dark_gray>➜ 合成</dark_gray>"
   back:
     title: "<yellow>◀ 返回仆从界面</yellow>"
+  # 升级成功的 Title 高光（主+副）。subtitle 占位符: {tier}=当前等级
+  success:
+    title: "<gold>✔ 升级成功</gold>"
+    subtitle: "<gray>当前 等级 {tier}</gray>"
   # 材料指南按钮：点击打开图形化合成预览界面
   guide:
     title: "<gold>📖 材料指南</gold>"
     lore:
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<gray>查看本级材料的获取方式</gray>"
       - "<dark_gray>合成配方 / 原版名称 / 其他来源</dark_gray>"
-      - "<strikethrough><dark_gray>                    </strikethrough>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
       - "<yellow>点击打开图形化合成预览 ▶</yellow>"
 
 # ============================================================
@@ -352,21 +391,102 @@ preview:
       name-craft: "<yellow>{material}</yellow> <dark_gray>×</dark_gray><white>{need}</white>"
       name-nocraft: "<gray>{material}</gray> <dark_gray>×</dark_gray><white>{need}</white>"
       lore-craft:
-        - "<strikethrough><dark_gray>                    </strikethrough>"
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
         - "<gray>原版</gray> <dark_gray>»</dark_gray> <white>{vanilla}</white>"
         - "<gray>已有</gray> <dark_gray>»</dark_gray> <white>{owned}</white>"
-        - "<strikethrough><dark_gray>                    </strikethrough>"
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
         - "<green>▶ 点击查看合成方式</green>"
       lore-nocraft:
-        - "<strikethrough><dark_gray>                    </strikethrough>"
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
         - "<gray>原版</gray> <dark_gray>»</dark_gray> <white>{vanilla}</white>"
         - "<gray>已有</gray> <dark_gray>»</dark_gray> <white>{owned}</white>"
         - ""
         - "<red>✖ 不可合成</red>"
         - "<dark_gray>{source}</dark_gray>"
-        - "<strikethrough><dark_gray>                    </strikethrough>"
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
     close:
       title: "<red>✖ 关闭</red>"
+
+# ============================================================
+#  升级材料总览 GUI（/minion materials，54 格总览 + 45 格预览）
+# ------------------------------------------------------------
+#  总览页分页列出全部附魔资源；点击卡片进入合成预览（3×3 网格拆分换算）。
+# ============================================================
+materials-gui:
+  # 总览页标题。可选: {page}=当前页 {pages}=总页数
+  title: "<gradient:#FFD54A:#FF9C2A>升级材料总览 <dark_gray>{page}/{pages}</dark_gray></gradient>"
+  prev:
+    title: "<green>◀ 上一页</green>"
+  next:
+    title: "<green>下一页 ▶</green>"
+  close:
+    title: "<red>✖ 关闭</red>"
+  back:
+    title: "<yellow>◀ 返回总览</yellow>"
+  # 总览卡片。占位符: {name}=附魔资源名 {ratio}=换算比 {base}=基础物料名
+  card:
+    title: "<aqua>{name}</aqua>"
+    lore:
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+      - "<gray>附魔资源 · 仆从升级材料</gray>"
+      - "<gray>换算</gray> <dark_gray>»</dark_gray> <white>{ratio} × {base} → 1</white>"
+      - ""
+      - "<green>▶ 点击查看合成方式</green>"
+      - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+  # 合成预览页。占位符: {name} {ratio} {base} {owned}=背包现有 {can}=可压缩数
+  detail:
+    title: "<gold>{name} · 合成预览</gold>"
+    info:
+      title: "<gold>✦ 合成 {name}</gold>"
+      lore:
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+        - "<gray>需要</gray> <dark_gray>»</dark_gray> <white>{ratio} 个 {base}</white>"
+        - "<green>▶ 点击右侧成品：从背包即时压缩 1 个</green>"
+        - "<dark_gray>仆从装「超级压缩 3000」模块可自动压缩</dark_gray>"
+        - "<gray>背包现有</gray> <dark_gray>»</dark_gray> <white>{owned}</white> <dark_gray>÷ {ratio} = 可压缩 {can} 个</dark_gray>"
+        - "<strikethrough><dark_gray>                    </dark_gray></strikethrough>"
+    arrow:
+      title: "<yellow>➜ 合成</yellow>"
+    # 成品槽追加的提示行
+    result-hint: "<green>▶ 点击从背包压缩 1 个（需 {ratio} 个{base}）</green>"
+
+# ============================================================
+#  稀有掉落 Title（仆从触发专属稀有掉落时的高光时刻）
+# ------------------------------------------------------------
+#  占位符: subtitle 的 {name}=稀有掉落物中文名
+# ============================================================
+rare-drop:
+  title: "<light_purple>✦ 稀有掉落!</light_purple>"
+  subtitle: "<gray>{name}</gray>"
+
+# ============================================================
+#  物品自身文案（附魔资源 / 模块 / 仆从生成物 / 材料指南聊天行）
+# ------------------------------------------------------------
+#  这些不是 GUI 卡片，但同属玩家可见展示内容，一律模板化可配
+# ============================================================
+enchanted:
+  title: "<aqua>{name}</aqua>"
+  lore:
+    - "<dark_gray>附魔资源 · 相当于 {ratio} 个{base}</dark_gray>"
+    - "<dark_gray>仆从升级材料</dark_gray>"
+
+module-item:
+  title: "<aqua>{name}</aqua>"
+  lore:
+    - "<gray>{desc}</gray>"
+    - "<dark_gray>手持点击仆从的模块槽装备</dark_gray>"
+
+minion-item:
+  title: "<gold>{name} {tier}</gold>"
+  lore:
+    - "<gray>右键方块放置仆从</gray>"
+    - "<dark_gray>{name}</dark_gray>"
+
+guide:
+  # 材料指南聊天行。chat-source 的 {craftable}=可合成/不可合成, {howto} 自带颜色标签
+  chat-head: "<white>· {name}</white>"
+  chat-source: "<dark_gray>  [{craftable}]</dark_gray> {howto}"
+  chat-source-fallback: "<gray>  常规途径获取（挖掘/击杀/交易）</gray>"
 
 # ============================================================
 #  GUI 布局配置（槽位与图标材质，与文案同样支持热重载）
@@ -460,11 +580,11 @@ layout:
   # ---- 燃料选择 GUI（27 格） ----
   fuel-gui:
     option:
-      slots: [10, 11, 12, 13, 14, 15, 16]
+      slots: [10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25]  # 两行共 14 个选项槽（≥ 11 种燃料，含催化剂类）
     empty:
       material: GRAY_STAINED_GLASS_PANE  # 背包无燃料时的占位格
     status:
-      slot: 22                         # 当前燃料状态卡
+      slot: 18                        # 当前燃料状态卡（左列，避开选项区）
     close:
       slot: 26
       material: BARRIER
@@ -529,3 +649,39 @@ layout:
     decor:
       slots: [0-9, 17-21, 23-26]
       material: BLACK_STAINED_GLASS_PANE
+
+  # ---- 升级材料总览 GUI（54 格，/minion materials） ----
+  materials-gui:
+    card:
+      slots: [10-16, 19-25, 28-34, 37-43]   # 卡片区 28 格/页，附魔资源按总数分页
+    decor:
+      slots: [0-9, 17-18, 26-27, 35-36, 44-47, 51-53]
+      material: BLUE_STAINED_GLASS_PANE
+    prev:
+      slot: 48                        # ◀ 上一页
+      material: ARROW
+    close:
+      slot: 49                        # 关闭（居中）
+      material: BARRIER
+    next:
+      slot: 50                        # 下一页 ▶
+      material: ARROW
+    detail:
+      grid:
+        slots: [20, 21, 22, 29, 30, 31, 38, 39, 40]  # 3×3 网格按真实数量拆分（合计=ratio）
+      arrow:
+        slot: 24
+        material: ARROW
+      result:
+        slot: 25                       # 成品槽：点击从背包手动压缩 1 个
+      info:
+        slot: 4                        # 信息卡（需要/可压缩数/获取途径）
+        material: KNOWLEDGE_BOOK
+      back:
+        slot: 44                       # ◀ 返回总览来源页
+        material: ARROW
+      close:
+        slot: 36
+        material: BARRIER
+      decor:
+        material: GRAY_STAINED_GLASS_PANE  # 预览页铺底（grid/info 等槽随后覆盖）

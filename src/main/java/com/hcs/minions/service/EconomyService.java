@@ -6,6 +6,7 @@ import com.hcs.minions.util.Logs;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -85,5 +86,43 @@ public final class EconomyService {
             }
             return true;
         });
+    }
+
+    /**
+     * 玩家余额是否足够（分）。经济未启用时视为「不收费」——返回 true，
+     * 让 unlock-cost 在经济缺失的服上不阻塞放置（与「无 Vault 也能玩」一致）。
+     */
+    public boolean has(Player player, long cents) {
+        if (economy == null || cents <= 0) {
+            return true;
+        }
+        try {
+            return economy.has(player, cents / 100.0);
+        } catch (RuntimeException e) {
+            Logs.warn("Vault 余额查询失败: player={}, amount={}", player.getName(), cents, e);
+            return false;
+        }
+    }
+
+    /**
+     * 同步扣款（分）。成功返回 true；经济未启用或余额不足返回 false。
+     * 调用方须在主线程（Vault 实现多为非线程安全）。
+     */
+    public boolean withdraw(Player player, long cents) {
+        if (economy == null || cents <= 0) {
+            return true;
+        }
+        try {
+            EconomyResponse response = economy.withdrawPlayer(player, cents / 100.0);
+            if (response == null || response.type != EconomyResponse.ResponseType.SUCCESS) {
+                Logs.warn("Vault 扣款失败: player={}, amount={}, type={}",
+                        player.getName(), cents, response == null ? "null" : response.type);
+                return false;
+            }
+            return true;
+        } catch (RuntimeException e) {
+            Logs.error("Vault 扣款异常: player={}, amount={}", player.getName(), cents, e);
+            return false;
+        }
     }
 }

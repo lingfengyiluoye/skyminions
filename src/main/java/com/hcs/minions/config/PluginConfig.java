@@ -2,7 +2,7 @@ package com.hcs.minions.config;
 
 import com.hcs.minions.model.MinionType;
 
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,6 +23,11 @@ import java.util.Map;
  * @param minPlacementDistance       仆从间最小切比雪夫距离（同世界水平面）；0 = 不限制。
  *                                   默认 5 = 两个 5x5 工作区恰好不重叠
  * @param rareDropBroadcast          稀有掉落是否全服广播（false 时仅通知主人）
+ * @param fuels            燃料表（原版 + 附魔资源催化剂，配置驱动）
+ * @param autoSmelt        自动熔炼映射（输入物料 -> 熔炼产物）
+ * @param compaction       自动压缩映射（散装 -> 9:1 方块形态）+ 压缩比
+ * @param saplings         伐木补种映射（原木 -> 树苗）
+ * @param enchantedResources 附魔资源注册表（key/中文名/基底/换算比）
  */
 public record PluginConfig(
         DatabaseConfig database,
@@ -40,7 +45,13 @@ public record PluginConfig(
         boolean collectionUnlockEnabled,
         double playerScanRadius,
         int minPlacementDistance,
-        boolean rareDropBroadcast
+        boolean rareDropBroadcast,
+        FuelEntry.Table fuels,
+        Map<org.bukkit.Material, org.bukkit.Material> autoSmelt,
+        Map<org.bukkit.Material, org.bukkit.Material> compaction,
+        int compactionRatio,
+        Map<org.bukkit.Material, org.bukkit.Material> saplings,
+        List<EnchantedResourceDef> enchantedResources
 ) {
 
     public PluginConfig {
@@ -61,6 +72,12 @@ public record PluginConfig(
         if (minPlacementDistance < 0) {
             minPlacementDistance = 0;
         }
+        fuels = fuels == null ? FuelEntry.Table.empty() : fuels;
+        autoSmelt = autoSmelt == null ? Map.of() : Map.copyOf(autoSmelt);
+        compaction = compaction == null ? Map.of() : Map.copyOf(compaction);
+        compactionRatio = Math.max(2, compactionRatio);
+        saplings = saplings == null ? Map.of() : Map.copyOf(saplings);
+        enchantedResources = enchantedResources == null ? List.of() : List.copyOf(enchantedResources);
     }
 
     public MinionTypeConfig type(MinionType type) {

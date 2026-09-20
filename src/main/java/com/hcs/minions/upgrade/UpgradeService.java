@@ -1,11 +1,10 @@
 package com.hcs.minions.upgrade;
 
+import com.hcs.minions.config.GameMaps;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.util.EnchantedResource;
+import com.hcs.minions.util.GuiText;
 import com.hcs.minions.util.ItemRef;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
@@ -36,60 +35,18 @@ public final class UpgradeService {
 
     private final NamespacedKey upgradeKey;
 
-    /** 自动熔炼映射：矿石/原矿/沙子 -> 熔炼产物。 */
-    private static final Map<Material, Material> SMELT_MAP = Map.ofEntries(
-            Map.entry(Material.COAL_ORE, Material.COAL),
-            Map.entry(Material.DEEPSLATE_COAL_ORE, Material.COAL),
-            Map.entry(Material.IRON_ORE, Material.IRON_INGOT),
-            Map.entry(Material.DEEPSLATE_IRON_ORE, Material.IRON_INGOT),
-            Map.entry(Material.COPPER_ORE, Material.COPPER_INGOT),
-            Map.entry(Material.DEEPSLATE_COPPER_ORE, Material.COPPER_INGOT),
-            Map.entry(Material.GOLD_ORE, Material.GOLD_INGOT),
-            Map.entry(Material.DEEPSLATE_GOLD_ORE, Material.GOLD_INGOT),
-            Map.entry(Material.DIAMOND_ORE, Material.DIAMOND),
-            Map.entry(Material.DEEPSLATE_DIAMOND_ORE, Material.DIAMOND),
-            Map.entry(Material.EMERALD_ORE, Material.EMERALD),
-            Map.entry(Material.DEEPSLATE_EMERALD_ORE, Material.EMERALD),
-            Map.entry(Material.REDSTONE_ORE, Material.REDSTONE),
-            Map.entry(Material.DEEPSLATE_REDSTONE_ORE, Material.REDSTONE),
-            Map.entry(Material.LAPIS_ORE, Material.LAPIS_LAZULI),
-            Map.entry(Material.DEEPSLATE_LAPIS_ORE, Material.LAPIS_LAZULI),
-            Map.entry(Material.NETHER_GOLD_ORE, Material.GOLD_NUGGET),
-            // 模拟采集的产物是「原矿」形态（RAW_*），不是矿石方块：
-            // 不补这三行，自动熔炼对铁/铜/金仆从永远不生效，且附魔铁锭/铜锭/金锭
-            //（以锭形态为基底）也永远无法得出
-            Map.entry(Material.RAW_IRON, Material.IRON_INGOT),
-            Map.entry(Material.RAW_COPPER, Material.COPPER_INGOT),
-            Map.entry(Material.RAW_GOLD, Material.GOLD_INGOT),
-            Map.entry(Material.SAND, Material.GLASS),
-            Map.entry(Material.RED_SAND, Material.GLASS)
-    );
+    /** 自动熔炼映射（配置驱动，见 {@link GameMaps}）。 */
+    private static Map<Material, Material> smeltMap() {
+        return GameMaps.smelt();
+    }
 
-    /** 自动压缩映射：散装资源 -> 9:1 方块形态。 */
-    private static final Map<Material, Material> COMPACT_MAP = Map.ofEntries(
-            Map.entry(Material.COAL, Material.COAL_BLOCK),
-            Map.entry(Material.IRON_INGOT, Material.IRON_BLOCK),
-            Map.entry(Material.COPPER_INGOT, Material.COPPER_BLOCK),
-            Map.entry(Material.GOLD_INGOT, Material.GOLD_BLOCK),
-            Map.entry(Material.DIAMOND, Material.DIAMOND_BLOCK),
-            Map.entry(Material.EMERALD, Material.EMERALD_BLOCK),
-            Map.entry(Material.REDSTONE, Material.REDSTONE_BLOCK),
-            Map.entry(Material.LAPIS_LAZULI, Material.LAPIS_BLOCK),
-            Map.entry(Material.RAW_IRON, Material.RAW_IRON_BLOCK),
-            Map.entry(Material.RAW_GOLD, Material.RAW_GOLD_BLOCK),
-            Map.entry(Material.RAW_COPPER, Material.RAW_COPPER_BLOCK),
-            Map.entry(Material.WHEAT, Material.HAY_BLOCK),
-            Map.entry(Material.MELON_SLICE, Material.MELON),
-            Map.entry(Material.SNOWBALL, Material.SNOW_BLOCK),
-            Map.entry(Material.SLIME_BALL, Material.SLIME_BLOCK),
-            Map.entry(Material.CLAY_BALL, Material.CLAY),
-            Map.entry(Material.NETHERITE_INGOT, Material.NETHERITE_BLOCK),
-            Map.entry(Material.IRON_NUGGET, Material.IRON_INGOT),
-            Map.entry(Material.GOLD_NUGGET, Material.GOLD_INGOT)
-    );
+    /** 自动压缩映射（配置驱动，见 {@link GameMaps}）。 */
+    private static Map<Material, Material> compactMap() {
+        return GameMaps.compact();
+    }
 
     /** 钻石散布：每次工作额外产出钻石的概率。 */
-    private static final double DIAMOND_SPREAD_CHANCE = 0.10;
+    private static final double DIAMOND_SPREADING_CHANCE = 0.10;
 
     /** 腐化之土：每次工作额外产出腐化副产物的概率（对齐 Hypixel Corrupt Soil 约 20%）。 */
     private static final double CORRUPT_SOIL_CHANCE = 0.20;
@@ -105,17 +62,13 @@ public final class UpgradeService {
     // 模块物品工厂
     // ------------------------------------------------------------------
 
-    /** 生成一个模块物品（PDC 携带模块类型，跨重启安全）。 */
+    /** 生成一个模块物品（PDC 携带模块类型，跨重启安全；文案来自 gui.yml）。 */
     public ItemStack createItem(MinionUpgradeType type) {
         ItemStack item = new ItemStack(type.icon());
         ItemMeta meta = item.getItemMeta();
-        // 去斜体：Paper 客户端对未显式设置 ITALIC 的物品名/Lore 按原版默认斜体渲染
-        meta.displayName(Component.text(type.displayName(), NamedTextColor.AQUA)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(List.of(
-                Component.text(type.description(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                Component.text("手持点击仆从的模块槽装备", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)
-        ));
+        Map<String, String> v = Map.of("name", type.displayName(), "desc", type.description());
+        meta.displayName(GuiText.title("module-item.title", v));
+        meta.lore(GuiText.lore("module-item.lore", v));
         meta.getPersistentDataContainer().set(upgradeKey, PersistentDataType.STRING, type.key());
         item.setItemMeta(meta);
         return item;
@@ -145,9 +98,13 @@ public final class UpgradeService {
      * 「面积不低于目标」的最小奇数边长（向上取整到最近奇数），
      * 保证模块在小半径下也确实生效；GUI 文案只描述"扩大工作范围"，
      * 不承诺精确百分比。</p>
+     *
+     * <p>类型限制：仅挖掘类仆从生效（对齐 Hypixel 原版口径）。</p>
      */
     public int radiusFor(Minion minion, int baseRadius) {
-        return radiusWithExpander(baseRadius, minion.hasUpgrade(MinionUpgradeType.MINION_EXPANDER));
+        boolean equipped = minion.hasUpgrade(MinionUpgradeType.MINION_EXPANDER)
+                && MinionUpgradeType.MINION_EXPANDER.appliesTo(minion.type().behavior());
+        return radiusWithExpander(baseRadius, equipped);
     }
 
     /**
@@ -213,12 +170,15 @@ public final class UpgradeService {
         if (minion.hasUpgrade(MinionUpgradeType.AUTO_SMELTER)) {
             result = smelt(result);
         }
-        if (minion.hasUpgrade(MinionUpgradeType.DIAMOND_SPREADING) && random.nextDouble() < DIAMOND_SPREAD_CHANCE) {
+        if (minion.hasUpgrade(MinionUpgradeType.DIAMOND_SPREADING) && random.nextDouble() < DIAMOND_SPREADING_CHANCE) {
             result.add(new ItemStack(Material.DIAMOND, 1));
         }
         // 腐化之土（对齐 Hypixel Corrupt Soil）：额外产出硫磺（火药）+ 腐化碎片（下界疣承载"腐化"观感），
         // 稀有转化材料，供高阶配方回流；只加不改，不影响主产物。
-        if (minion.hasUpgrade(MinionUpgradeType.CORRUPT_SOIL) && random.nextDouble() < CORRUPT_SOIL_CHANCE) {
+        // 类型限制：仅农耕类仆从生效（对齐 Hypixel 原版口径）
+        if (minion.hasUpgrade(MinionUpgradeType.CORRUPT_SOIL)
+                && MinionUpgradeType.CORRUPT_SOIL.appliesTo(minion.type().behavior())
+                && random.nextDouble() < CORRUPT_SOIL_CHANCE) {
             result.add(new ItemStack(Material.GUNPOWDER, 1));
             if (random.nextDouble() < 0.5) {
                 result.add(new ItemStack(Material.NETHER_WART, 1));
@@ -229,8 +189,9 @@ public final class UpgradeService {
 
     private List<ItemStack> smelt(List<ItemStack> drops) {
         List<ItemStack> out = new ArrayList<>(drops.size());
+        Map<Material, Material> map = smeltMap();
         for (ItemStack item : drops) {
-            Material smelted = SMELT_MAP.get(item.getType());
+            Material smelted = map.get(item.getType());
             out.add(smelted == null ? item : new ItemStack(smelted, item.getAmount()));
         }
         return out;
@@ -282,13 +243,14 @@ public final class UpgradeService {
                 return;
             }
         }
-        // 自动压缩（及超级压缩对无附魔定义材质的回退）：9:1 方块形态
-        Material target = COMPACT_MAP.get(mat);
-        if (target == null || count < 9) {
+        // 自动压缩（及超级压缩对无附魔定义材质的回退）：9:1 方块形态（比例见 GameMaps）
+        Material target = compactMap().get(mat);
+        int ratio = GameMaps.compactRatio();
+        if (target == null || count < ratio) {
             return;
         }
-        long made = compressCount(count, 9)[0];
-        if (minion.consume(new ItemRef.VanillaRef(mat), made * 9)) {
+        long made = compressCount(count, ratio)[0];
+        if (minion.consume(new ItemRef.VanillaRef(mat), made * ratio)) {
             minion.addToStorage(new ItemStack(target, (int) made));
         }
     }

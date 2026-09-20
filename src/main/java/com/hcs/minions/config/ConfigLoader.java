@@ -34,6 +34,15 @@ public final class ConfigLoader {
     private ConfigLoader() {
     }
 
+    /**
+     * 读取 {@code sounds} 段（事件音效音量，见 {@code com.hcs.minions.util.Sounds}）。
+     * 独立于 {@link #load}：音效表不进入不可变配置快照，由 Sounds 自行热重载。
+     */
+    public static ConfigurationSection soundsSection(JavaPlugin plugin) {
+        plugin.reloadConfig();
+        return plugin.getConfig().getConfigurationSection("sounds");
+    }
+
     public static PluginConfig load(JavaPlugin plugin) {
         plugin.saveDefaultConfig();
         // JavaPlugin 缓存的 FileConfiguration 不会自动感知磁盘修改；重载入口必须显式刷新。
@@ -48,7 +57,10 @@ public final class ConfigLoader {
                 str(yaml, "database.database", "minions"),
                 str(yaml, "database.user", "root"),
                 str(yaml, "database.password", ""),
-                yaml.getInt("database.pool-size", 4)
+                yaml.getInt("database.pool-size", 4),
+                // 默认 false 保持既有部署行为（自签证书/内网 MySQL 不开 SSL 也能连）；
+                // 需要加密传输的服主显式置 true
+                yaml.getBoolean("database.use-ssl", false)
         );
 
         EconomyConfig economy = new EconomyConfig(
@@ -77,8 +89,21 @@ public final class ConfigLoader {
 
         CollectionConfig collections = loadCollections(yaml.getConfigurationSection("collections"));
 
-        // 离线收益结算（三道平衡锁：仓储天花板 / 仅基础速度 / 燃料真实燃烧）
+        // 离线收益结算（三道平衡锁：仓储天花板 / 仅基础速度 / 燃料按开关燃烧）
         OfflineProductionConfig offlineProduction = loadOfflineProduction(yaml.getConfigurationSection("offline-production"));
+
+        // 燃料表（原版 + 附魔资源催化剂）：配置驱动，缺段回退内置默认
+        com.hcs.minions.config.FuelEntry.Table fuels = com.hcs.minions.config.FuelEntry.parse(
+                yaml.getList("fuels"), yaml.getList("enchanted-fuels"));
+
+        // 自动熔炼 / 自动压缩 / 伐木补种映射：配置驱动，缺段回退内置默认
+        Map<Material, Material> autoSmelt = loadMaterialMap(yaml.getConfigurationSection("auto-smelt"));
+        int compactionRatio = Math.max(2, yaml.getInt("compaction.ratio", 9));
+        Map<Material, Material> compaction = loadMaterialMap(yaml.getConfigurationSection("compaction.map"));
+        Map<Material, Material> saplings = loadMaterialMap(yaml.getConfigurationSection("saplings"));
+
+        // 附魔资源注册表：配置驱动，缺段回退内置默认
+        List<EnchantedResourceDef> enchantedResources = loadEnchantedResources(yaml.getList("enchanted-resources"));
 
         return new PluginConfig(
                 database, economy, render,
@@ -94,7 +119,13 @@ public final class ConfigLoader {
                 yaml.getBoolean("collection-unlock-enabled", true),
                 yaml.getDouble("player-scan-radius", 48.0),
                 yaml.getInt("min-placement-distance", 1),
-                yaml.getBoolean("rare-drop-broadcast", true)
+                yaml.getBoolean("rare-drop-broadcast", true),
+                fuels,
+                autoSmelt,
+                compaction,
+                compactionRatio,
+                saplings,
+                enchantedResources
         );
     }
 
@@ -105,14 +136,49 @@ public final class ConfigLoader {
     /** 解析离线收益配置（缺失时用安全默认值）。 */
     private static OfflineProductionConfig loadOfflineProduction(ConfigurationSection section) {
         if (section == null) {
-            return new OfflineProductionConfig(true, 24, 100, 180);
+            return new OfflineProductionConfig(true, 24, 100, 180, false);
         }
         return new OfflineProductionConfig(
                 section.getBoolean("enabled", true),
                 section.getInt("max-hours", 24),
                 section.getInt("rate-percent", 100),
-                section.getInt("min-seconds", 180)
+                section.getInt("min-seconds", 180),
+                // 默认 false：离线不吃加速就不该烧燃料（修复"白烧"）
+                section.getBoolean("burn-fuel-offline", false)
         );
+    }
+
+    /** 解析「输入物料 -> 产物」映射段；键值非法时告警并跳过。 */
+    private static Map<Material, Material> loadMaterialMap(ConfigurationSection section) {
+        Map<Material, Material> out = new java.util.LinkedHashMap<>();
+        if (section == null) {
+            return out;
+        }
+        for (String key : section.getKeys(false)) {
+            Material from = parseMaterialNullable(key);
+            Material to = parseMaterialNullable(section.getString(key));
+            if (from == null || to == null) {
+                Logs.warn("物料映射 {} -> {} 无法识别，已跳过", key, section.getString(key));
+                continue;
+            }
+            out.put(from, to);
+        }
+        return out;
+    }
+
+    /** 解析附魔资源注册表。 */
+    private static List<EnchantedResourceDef> loadEnchantedResources(List<?> raw) {
+        List<EnchantedResourceDef> out = new ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        for (Object o : raw) {
+            EnchantedResourceDef def = EnchantedResourceDef.parse(o);
+            if (def != null) {
+                out.add(def);
+            }
+        }
+        return out;
     }
 
     /** 解析 Collection 里程碑配置（缺失时用默认阈值）。 */
@@ -215,6 +281,7 @@ public final class ConfigLoader {
                     rareDrop,
                     rareDropChance,
                     s.getLong("unlock-amount", 0),
+                    Math.max(0, s.getLong("unlock-cost", 0)),
                     recipeOverrides,
                     java.util.Set.copyOf(s.getStringList("preferred-targets")),
                     s.getString("ranch-animal")

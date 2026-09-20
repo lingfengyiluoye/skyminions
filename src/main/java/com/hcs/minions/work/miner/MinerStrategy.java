@@ -1,6 +1,7 @@
 package com.hcs.minions.work.miner;
 
 import com.hcs.minions.model.MinionBehavior;
+import com.hcs.minions.work.ChunkGuard;
 import com.hcs.minions.work.MinionWorkStrategy;
 import com.hcs.minions.work.SimHarvest;
 import com.hcs.minions.work.WorkContext;
@@ -68,10 +69,15 @@ public final class MinerStrategy implements MinionWorkStrategy {
         Map<Material, Integer> counts = new LinkedHashMap<>();
         Block anchor = ctx.anchor();
         int r = ctx.radius();
+        // 范围扩展后半径可跨区块：未加载列跳过，避免 Folia 下同步加载/读到不一致状态
+        boolean[][] loaded = ChunkGuard.loaded(ctx.world(), anchor, r);
         int total = 0;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dz = -r; dz <= r; dz++) {
+                    if (!ChunkGuard.isLoaded(loaded, dx, dz, r)) {
+                        continue;
+                    }
                     Material m = anchor.getRelative(dx, dy, dz).getType();
                     if (allowed.contains(m)) {
                         counts.merge(m, 1, Integer::sum);
