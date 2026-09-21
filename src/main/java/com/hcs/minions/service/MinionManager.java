@@ -64,10 +64,12 @@ public final class MinionManager {
     private final CollectionService collection;
 
     private final ConcurrentHashMap<UUID, Minion> minions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<BlockLocation, UUID> byLocation = new ConcurrentHashMap<>();
+    /**
+     * 放置守卫：数量上限 / 同格禁放 / 最小间距 的原子占位（TOCTOU 由它关闭，
+     * 并发不变量见 PlacementGuardTest）。
+     */
+    private final PlacementGuard placement = new PlacementGuard();
     private final ConcurrentHashMap<UUID, Long> lastDebugLog = new ConcurrentHashMap<>();
-    /** 主人 -> 仆从数 索引，O(1) 查询（替代全量 stream 计数）。 */
-    private final ConcurrentHashMap<UUID, Integer> ownerCount = new ConcurrentHashMap<>();
     /** 处于「休眠」（半径无人）状态的仆从 id：恢复运转时补发闲置窗产出。 */
     private final Set<UUID> dormantIds = ConcurrentHashMap.newKeySet();
     private final Object placementLock = new Object();
@@ -76,6 +78,8 @@ public final class MinionManager {
      * 用 volatile 回调而非直接持有 OfflineSettlement：两者的构造有先后依赖。
      */
     private volatile java.util.function.Consumer<Minion> onReactivate;
+    /** 仆从诊断（只读）：由组合根在装配期注入（需要 strategies/skyblock/upgrades/searcher）。 */
+    private MinionDiagnostics diagnostics;
 
     private ScheduledTask tickTask;
     private ScheduledTask sellTask;
@@ -139,8 +143,8 @@ public final class MinionManager {
                 continue;
             }
             minions.put(minion.id(), minion);
-            byLocation.putIfAbsent(minion.location(), minion.id());
-            ownerCount.merge(minion.owner(), 1, Integer::sum);
+            // 装配期直接占位（不走 cap 检查：这些仆从是既有数据，不是新放置）
+            placement.admit(minion.owner(), minion.id(), minion.location());
             repository.register(minion);
         }
         Logs.info("已加载 {} 个仆从", minions.size());
@@ -172,10 +176,9 @@ public final class MinionManager {
             return;
         }
         // 不同 region 线程可能并发完成；超时后迟到的快照必须单独补刷，不能写入已提交批次。
-        List<com.hcs.minions.model.MinionData> snapshots = new java.util.concurrent.CopyOnWriteArrayList<>();
+        // 这条「迟到快照归属」规则由 SnapshotBatcher 承载（并发不变量有回归测试）。
+        SnapshotBatcher batch = new SnapshotBatcher();
         List<CompletableFuture<Void>> tasks = new ArrayList<>();
-        Object batchLock = new Object();
-        AtomicBoolean batchSettled = new AtomicBoolean();
         for (UUID id : dirtyIds) {
             Minion minion = repository.getCached(id);
             if (minion == null) {
@@ -197,14 +200,9 @@ public final class MinionManager {
                         snapshot = minion.toData();
                     }
                 } finally {
-                    if (snapshot != null) {
-                        synchronized (batchLock) {
-                            if (batchSettled.get()) {
-                                repository.flushSnapshots(List.of(snapshot));
-                            } else {
-                                snapshots.add(snapshot);
-                            }
-                        }
+                    if (snapshot != null && !batch.offer(snapshot)) {
+                        // 批次已结算（超时）：这份迟到的快照必须单独补刷，绝不能并进已落库的批次
+                        repository.flushSnapshots(List.of(snapshot));
                     }
                     task.complete(null);
                 }
@@ -214,12 +212,7 @@ public final class MinionManager {
             CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
                     .orTimeout(10, TimeUnit.SECONDS)
                     .whenComplete((v, t) -> {
-                        List<com.hcs.minions.model.MinionData> ready;
-                        synchronized (batchLock) {
-                            batchSettled.set(true);
-                            ready = List.copyOf(snapshots);
-                            snapshots.clear();
-                        }
+                        List<com.hcs.minions.model.MinionData> ready = batch.settle();
                         // 单个 region 任务挂起（区块异常等）不应阻塞整批落库：
                         // 超时后先冲刷已收集的快照；迟到快照由 region 回调单独补刷。
                         if (t != null) {
@@ -250,8 +243,7 @@ public final class MinionManager {
         repository.flushDirtySync();
         entities.despawnAll();
         minions.clear();
-        byLocation.clear();
-        ownerCount.clear();
+        placement.clear();
     }
 
     // ------------------------------------------------------------------
@@ -533,27 +525,21 @@ public final class MinionManager {
             return false;
         }
         // 上限 = 权限上限 + Collection 里程碑槽位加成（对齐 Hypixel 里程碑解锁仆从位玩法）。
-        // 用 ownerCount 原子「预占位」关闭 Folia 多 region 并发放置的 TOCTOU 超限窗口：
-        // 先 merge +1，超限则立即 -1 回滚并拒绝
-        MinionTypeConfig cfg;
-        synchronized (placementLock) {
-            int cap = permissions.maxMinions(player) + collection.bonusSlots(minion.owner());
-            if (ownerCount.merge(minion.owner(), 1, Integer::sum) > cap) {
-                ownerCount.merge(minion.owner(), -1, Integer::sum);
-                return false;
-            }
-            // 最小间距与坐标占位必须在同一把锁内完成，避免两个 region 同时通过空间检查。
-            if (tooCloseToOtherMinion(minion.location())) {
-                ownerCount.merge(minion.owner(), -1, Integer::sum);
-                return false;
-            }
-            if (byLocation.putIfAbsent(minion.location(), minion.id()) != null) {
-                ownerCount.merge(minion.owner(), -1, Integer::sum);
-                return false;
-            }
-            minions.put(minion.id(), minion);
-            cfg = config.get().type(minion.type());
+        // 三项检查（数量/同格/间距）由 PlacementGuard 在一把锁内原子完成，
+        // 任一失败完整回滚——关闭 Folia 多 region 并发放置的 TOCTOU 超限窗口。
+        // 该守卫的并发不变量由 PlacementGuardTest 守住。
+        int cap = permissions.maxMinions(player) + collection.bonusSlots(minion.owner());
+        int minDistance = config.get().minPlacementDistance();
+        boolean reserved = placement.tryReserve(
+                minion.owner(), minion.id(), cap,
+                minion.location(), minDistance,
+                // 关闭间距限制时不构建坐标列表（放置是低频操作，O(n) 也可接受）
+                minDistance > 0 ? existingLocations() : List.of());
+        if (!reserved) {
+            return false;
         }
+        minions.put(minion.id(), minion);
+        MinionTypeConfig cfg = config.get().type(minion.type());
         entities.spawn(minion);
         repository.save(minion);
         if (cfg == null) {
@@ -568,9 +554,18 @@ public final class MinionManager {
         return true;
     }
 
+    /** 现有仆从坐标（间距检查用；仅在 PlacementGuard 持有锁时被调用）。 */
+    private Iterable<BlockLocation> existingLocations() {
+        List<BlockLocation> out = new ArrayList<>(minions.size());
+        for (Minion m : minions.values()) {
+            out.add(m.location());
+        }
+        return out;
+    }
+
     /** 按坐标反查仆从（放置前占位校验用）。 */
     public Minion minionAt(BlockLocation location) {
-        UUID id = byLocation.get(location);
+        UUID id = placement.idAt(location);
         return id == null ? null : minions.get(id);
     }
 
@@ -597,12 +592,11 @@ public final class MinionManager {
     }
 
     public Minion remove(Minion minion, Player player) {
-        // 与 place() 共用 placementLock：ownerCount 的预占/回滚与 byLocation 占位
-        // 必须在同一把锁内完成，避免并发放置/拾取时计数错位
+        // 与 place() 共用 PlacementGuard：计数/坐标占位的释放必须原子，
+        // 避免并发放置/拾取时计数错位（半释放会慢慢吃掉玩家的仆从额度）
         synchronized (placementLock) {
             minions.remove(minion.id());
-            byLocation.remove(minion.location());
-            ownerCount.computeIfPresent(minion.owner(), (k, v) -> v <= 1 ? null : v - 1);
+            placement.release(minion.owner(), minion.location());
             lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
             dormantIds.remove(minion.id()); // 休眠集合同步清理，避免按 id 泄漏
             sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
@@ -639,6 +633,21 @@ public final class MinionManager {
      */
     public void setOnReactivate(java.util.function.Consumer<Minion> callback) {
         this.onReactivate = callback;
+    }
+
+    /** 诊断单个仆从（只读；回答「它为什么没在产出」）。 */
+    public MinionDiagnostics.Report diagnose(Minion minion) {
+        return diagnostics.inspect(minion);
+    }
+
+    /** 诊断一批仆从（按严重度排序：异常的排前面）。 */
+    public List<MinionDiagnostics.Report> diagnoseAll(List<Minion> minions) {
+        return diagnostics.inspectAll(minions);
+    }
+
+    /** 注入诊断器（组合根装配期调用：依赖 strategies/skyblock/upgrades/searcher）。 */
+    public void setDiagnostics(MinionDiagnostics diagnostics) {
+        this.diagnostics = diagnostics;
     }
 
     /**
@@ -678,7 +687,7 @@ public final class MinionManager {
     }
 
     public long countByOwner(UUID owner) {
-        return ownerCount.getOrDefault(owner, 0);
+        return placement.countOf(owner);
     }
 
     public java.util.Collection<Minion> all() {

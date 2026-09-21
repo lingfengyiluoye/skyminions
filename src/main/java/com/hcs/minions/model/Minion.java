@@ -532,7 +532,7 @@ public final class Minion {
     }
 
     /** 仓库内现存物品件数（展示用）。 */
-    long storageCount() {
+    public long storageCount() {
         long n = 0;
         for (int i = 0; i < unlockedSlots(); i++) {
             ItemStack item = storage.getItem(storageSlots()[i]);

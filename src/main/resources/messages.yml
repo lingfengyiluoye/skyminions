@@ -116,3 +116,12 @@ mult-fuel-weak: "<gray>当前已有 ≥{0} 的更强倍率在生效，该催化�
 materials-guide-failed: "<red>✖ 材料指南打开失败</red>\n<gray>详情见控制台日志</gray>"
 materials-overview-failed: "<red>✖ 材料总览打开失败</red>\n<gray>详情见控制台日志</gray>"
 
+
+# ============ 仆从诊断（/minion diagnose） ============
+diag-line: "<dark_gray>  · </dark_gray>{0}"
+diag-header: "<gold><bold>▼ {0}</bold></gold> <gray>等级 {1}</gray> <dark_gray>@ {2}</dark_gray>"
+diag-verdict: "<gray>结论</gray> <dark_gray>»</dark_gray> {0}"
+diag-summary: "<gold><bold>▼ 诊断 {0} 只仆从</bold></gold> <gray>（异常 {1} · 休眠 {2} · 正常 {3}）</gray>"
+diag-none: "<gray>你没有仆从需要诊断</gray>"
+diag-other-none: "<gray>该玩家没有仆从</gray>"
+diag-player-only-target: "<red>✖ 请指定要诊断的玩家（控制台可用）</red>"

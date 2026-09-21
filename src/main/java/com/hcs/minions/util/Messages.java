@@ -122,7 +122,7 @@ public final class Messages {
         DEFAULTS.put("upgrade-failed", "<red>✖ 升级失败</red>\n<gray>还差 <gold>{0}</gold>，把材料与本体放入升级合成格后再试</gray>");
         DEFAULTS.put("upgrade-missing-body", "<red>✖ 升级失败</red>\n<gray>还需 <gold>1 个 {0} 等级 {1}</gold> 仆从本体（放进仆从仓库或背包）</gray>");
         DEFAULTS.put("upgrade-success", "<green>✔ 升级成功！</green>\n<gray>当前 <gold>等级 {0}</gold></gray>");
-        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion materials \\<类型> [等级]</white> <gray>- 材料获取指南</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
+        DEFAULTS.put("usage", "<gray>SkyMinions 管理命令</gray>\n<white>/minion give \\<类型> [等级]</white> <gray>- 发放仆从</gray>\n<white>/minion upgrade \\<模块></white> <gray>- 发放模块</gray>\n<white>/minion materials \\<类型> [等级]</white> <gray>- 材料获取指南</gray>\n<white>/minion skin</white> <gray>- 查看皮肤</gray>\n<white>/minion reload</white> <gray>- 重载配置</gray>\n<white>/minion purge</white> <gray>- 清理残留</gray>\n<white>/minion list</white> <gray>- 在线仆从数</gray>\n<white>/minion stats</white> <gray>- 运行统计</gray>\n<white>/minion diagnose [玩家]</white> <gray>- 诊断仆从为何不产出</gray>\n<white>/minions</white> <gray>- 打开仆从图鉴（收藏/进度/配方）</gray>");
         DEFAULTS.put("usage-give", "<red>用法</red><gray>: /minion give \\<类型> [等级]</gray>");
         DEFAULTS.put("usage-upgrade", "<red>用法</red><gray>: /minion upgrade \\<模块></gray>\n<dark_gray>可选: auto_smelter(自动熔炼) | compactor(自动压缩) | super_compactor(超级压缩) | diamond_spreading(钻石散布) | minion_expander(范围扩展) | auto_seller(自动售卖) | budget_hopper(简易漏斗) | enchanted_hopper(附魔漏斗) | corrupt_soil(腐化之土) | storage_small/medium/large(储物箱)</dark_gray>");
         DEFAULTS.put("level-must-be-number", "<red>✖ 等级必须是数字</red>");
@@ -161,6 +161,14 @@ public final class Messages {
         DEFAULTS.put("rare-drop", "<gold>✦ 你的{0}获得了稀有掉落</gold> <light_purple>{1}</light_purple>");
         // 自动售卖反馈（Hypixel 的 auto-sell 每次都有明确提示，玩家据此判断要不要继续挂）
         DEFAULTS.put("sold", "<green>✔ 自动售出 {0} 件</green> <gray>获得</gray> <gold>{1} 金币</gold>");
+        // ---- 仆从诊断（/minion diagnose）----
+        DEFAULTS.put("diag-line", "<dark_gray>  · </dark_gray>{0}");
+        DEFAULTS.put("diag-header", "<gold><bold>▼ {0}</bold></gold> <gray>等级 {1}</gray> <dark_gray>@ {2}</dark_gray>");
+        DEFAULTS.put("diag-verdict", "<gray>结论</gray> <dark_gray>»</dark_gray> {0}");
+        DEFAULTS.put("diag-summary", "<gold><bold>▼ 诊断 {0} 只仆从</bold></gold> <gray>（异常 {1} · 休眠 {2} · 正常 {3}）</gray>");
+        DEFAULTS.put("diag-none", "<gray>你没有仆从需要诊断</gray>");
+        DEFAULTS.put("diag-other-none", "<gray>该玩家没有仆从</gray>");
+        DEFAULTS.put("diag-player-only-target", "<red>✖ 请指定要诊断的玩家（控制台可用）</red>");
         DEFAULTS.put("unlock-required", "<red>✖ 该仆从类型尚未解锁</red>\n<gray>需累计收集 <white>{0}</white> 达到 <yellow>{1}</yellow>（当前 {2}）</gray>");
         DEFAULTS.put("offline-header", "<gold><bold>▲ 离线收获 · {0}</bold></gold>");
         DEFAULTS.put("offline-detail", "<dark_gray>· {0} <yellow>×{1}</yellow></dark_gray>");
@@ -391,6 +399,40 @@ public final class Messages {
     /** 自动售卖反馈（{0}=件数 {1}=金币）。 */
     public static Component sold(long units, String coins) {
         return render("sold", units, coins);
+    }
+
+    // ---- 仆从诊断 ----
+
+    /** 诊断事实行（{0} 为已渲染的 MiniMessage 片段）。 */
+    public static Component diagLine(String fragment) {
+        return render("diag-line", fragment);
+    }
+
+    /** 单个仆从的标题行（{0}=类型名 {1}=等级 {2}=坐标）。 */
+    public static Component diagHeader(String type, String tier, String loc) {
+        return render("diag-header", type, tier, loc);
+    }
+
+    /** 结论行（{0}=结论文案，可含颜色标签）。 */
+    public static Component diagVerdict(String verdict) {
+        return render("diag-verdict", verdict);
+    }
+
+    /** 汇总行（{0}=总数 {1}=异常 {2}=休眠 {3}=正常）。 */
+    public static Component diagSummary(int total, int bad, int dormant, int ok) {
+        return render("diag-summary", total, bad, dormant, ok);
+    }
+
+    public static Component diagNone() {
+        return render("diag-none");
+    }
+
+    public static Component diagOtherNone() {
+        return render("diag-other-none");
+    }
+
+    public static Component diagPlayerOnlyTarget() {
+        return render("diag-player-only-target");
     }
 
     /** 运行统计标题（/minion stats）。 */

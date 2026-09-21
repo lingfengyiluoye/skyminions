@@ -21,6 +21,7 @@ import com.hcs.minions.repository.RepositoryFactory;
 import com.hcs.minions.service.BlockSearcher;
 import com.hcs.minions.service.CollectionService;
 import com.hcs.minions.service.EconomyService;
+import com.hcs.minions.service.MinionDiagnostics;
 import com.hcs.minions.service.MinionEntityService;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
@@ -144,6 +145,7 @@ public final class MinionsPlugin extends JavaPlugin {
                 strategies::get, collection, upgrades);
         getServer().getPluginManager().registerEvents(offline, this);
         manager.setOnReactivate(offline::settle);
+        manager.setDiagnostics(new MinionDiagnostics(configProvider, strategies, skyblock, upgrades, searcher));
 
         // PlaceholderAPI 占位符扩展（可选）：未安装则不注册
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {

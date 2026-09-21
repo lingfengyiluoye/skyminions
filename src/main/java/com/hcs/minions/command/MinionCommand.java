@@ -3,6 +3,7 @@ package com.hcs.minions.command;
 import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.model.MinionSkin;
 import com.hcs.minions.model.MinionType;
+import com.hcs.minions.service.MinionDiagnostics;
 import com.hcs.minions.service.MinionItemService;
 import com.hcs.minions.service.MinionManager;
 import com.hcs.minions.upgrade.MinionUpgradeType;
@@ -12,6 +13,7 @@ import com.hcs.minions.util.ItemRef;
 import com.hcs.minions.util.Logs;
 import com.hcs.minions.util.Messages;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -72,6 +74,7 @@ public final class MinionCommand extends Command {
             case "purge" -> purge(sender);
             case "list" -> sender.sendMessage(Messages.totalMinions(manager.all().size()));
             case "stats" -> stats(sender);
+            case "diagnose" -> diagnose(sender, args);
             default -> sender.sendMessage(Messages.UNKNOWN_COMMAND);
         }
         return true;
@@ -186,6 +189,67 @@ public final class MinionCommand extends Command {
         }
     }
 
+    /**
+     * 仆从诊断：逐只列出「为什么没在产出」及实际数字。
+     *
+     * <p>玩家默认诊断自己；指定玩家名需要管理权限（控制台天然可用）。
+     * 完全只读——不推进离线指针、不消耗燃料、不触碰任何状态。</p>
+     */
+    private void diagnose(CommandSender sender, String[] args) {
+        java.util.UUID target;
+        if (args.length >= 2) {
+            if (!sender.hasPermission("minions.admin")) {
+                sender.sendMessage(Messages.NO_PERMISSION);
+                return;
+            }
+            Player online = Bukkit.getPlayerExact(args[1]);
+            if (online == null) {
+                sender.sendMessage(Messages.unknownType(args[1]));
+                return;
+            }
+            target = online.getUniqueId();
+        } else {
+            if (!(sender instanceof Player self)) {
+                sender.sendMessage(Messages.diagPlayerOnlyTarget());
+                return;
+            }
+            target = self.getUniqueId();
+        }
+
+        List<com.hcs.minions.model.Minion> owned = manager.all().stream()
+                .filter(m -> target.equals(m.owner()))
+                .toList();
+        if (owned.isEmpty()) {
+            sender.sendMessage(sender instanceof Player ? Messages.diagNone() : Messages.diagOtherNone());
+            return;
+        }
+
+        List<MinionDiagnostics.Report> reports = manager.diagnoseAll(owned);
+        int bad = 0;
+        int dormant = 0;
+        int ok = 0;
+        for (MinionDiagnostics.Report r : reports) {
+            switch (r.verdict()) {
+                case WORKING, COOLDOWN -> ok++;
+                case DORMANT -> dormant++;
+                default -> bad++;
+            }
+        }
+        sender.sendMessage(Messages.diagSummary(reports.size(), bad, dormant, ok));
+        for (MinionDiagnostics.Report r : reports) {
+            com.hcs.minions.model.Minion m = r.minion();
+            String typeName = m.type().displayName();
+            String loc = m.location().world() + " " + m.location().x() + "," + m.location().y() + "," + m.location().z();
+            sender.sendMessage(Messages.diagHeader(typeName, com.hcs.minions.util.Roman.of(m.level()), loc));
+            // 结论着色：生产中=绿，异常=红（语义色纪律：红=异常、绿=正常）
+            String color = r.verdict().isProducing() ? "green" : "red";
+            sender.sendMessage(Messages.diagVerdict("<" + color + ">" + r.verdict().label() + "</" + color + ">"));
+            for (Component fact : r.facts()) {
+                sender.sendMessage(fact);
+            }
+        }
+    }
+
     @Override
     public @NotNull List<String> tabComplete(@NotNull CommandSender sender, @NotNull String alias, @NotNull String[] args) {
         // 补全同样受管理权限保护，避免向无权限玩家泄露子命令结构
@@ -193,7 +257,7 @@ public final class MinionCommand extends Command {
             return List.of();
         }
         if (args.length == 1) {
-            return List.of("give", "upgrade", "materials", "skin", "reload", "purge", "list", "stats");
+            return List.of("give", "upgrade", "materials", "skin", "reload", "purge", "list", "stats", "diagnose");
         }
         if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
             return MinionType.all().stream().map(MinionType::key).toList();

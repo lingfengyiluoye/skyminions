@@ -107,12 +107,16 @@ public final class OfflineSettlement implements Listener {
             if (!cfgOff.enabled()) {
                 return;
             }
+            // 时间账交给纯函数算（幂等规则有回归测试）：不论后续是否产出，
+            // 都必须把指针推进到 now，否则同一段旧指针会被反复重算
             long now = System.currentTimeMillis();
-            long idleSec = (now - minion.lastActiveEpochMs()) / 1000L;
-            if (idleSec < cfgOff.minSeconds()) {
-                return;
+            OfflineWindow.Settlement window =
+                    OfflineWindow.settle(minion.lastActiveEpochMs(), now, cfgOff);
+            minion.setLastActiveEpochMs(window.newPointer());
+            if (!window.shouldProduce()) {
+                return; // 未达门槛/零窗口：指针已推进，不产出
             }
-            long cappedSec = Math.min(idleSec, cfgOff.maxHours() * 3600L);
+            long cappedSec = window.cappedSec();
 
             MinionTypeConfig cfg = config.get().type(minion.type());
             if (cfg == null) {
@@ -129,7 +133,6 @@ public final class OfflineSettlement implements Listener {
             long freeUnits = freeUnitsOf(minion, cfg.product());
             if (freeUnits <= 0) {
                 sendSummary(minion, cfg, 0, List.of());
-                minion.setLastActiveEpochMs(now);
                 return;
             }
 
@@ -149,18 +152,14 @@ public final class OfflineSettlement implements Listener {
             actionsL = actionsL * Math.max(0, cfgOff.ratePercent()) / 100;
             int actions = (int) Math.min(actionsL, 5_000_000);
             if (actions <= 0) {
-                // 配置为 0% 或闲置时间不足以完成一次动作时，时间窗口仍已结算，避免下次上线重复扣燃料。
-                minion.setLastActiveEpochMs(now);
+                // 配置为 0% 或闲置时间不足以完成一次动作：指针已在方法开头推进，直接返回
                 return;
             }
 
             MinionWorkStrategy strategy = strategies.apply(minion.type().behavior());
             List<ItemStack> yields = strategy.offlineYield(cfg, actions, ThreadLocalRandom.current(), freeUnits);
             if (yields.isEmpty()) {
-                // 燃料已在上方按闲置时长扣除；即便本轮无产出，也必须推进已支付指针，
-                // 否则下次上线会用同一段旧 lastActive 重算窗口、重复扣燃料。
-                minion.setLastActiveEpochMs(now);
-                return;
+                return; // 指针已推进：不会用同一段旧窗口重复扣燃料/重复结算
             }
 
             long totalUnits = yields.stream().mapToLong(ItemStack::getAmount).sum();
@@ -174,8 +173,8 @@ public final class OfflineSettlement implements Listener {
                     }
                 }
             }
-            // 只有物品已经入仓/安全交付后才推进已支付指针，避免异常导致时间窗口被吞掉。
-            minion.setLastActiveEpochMs(now);
+            // 指针已在方法开头推进（at-most-once 语义）：中途异常最多少发这一段窗口，
+            // 但绝不会重复支付——对物品经济而言，「丢一窗」远好过「刷一窗」
             // 补发的散装立即过一轮仓储级压缩（装了压缩模块的玩家上线即见附魔资源）
             upgrades.compactStorage(minion);
             for (ItemStack item : yields) {
