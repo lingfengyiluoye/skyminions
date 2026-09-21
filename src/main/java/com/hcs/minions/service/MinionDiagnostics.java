@@ -4,6 +4,7 @@ import com.hcs.minions.config.ConfigProvider;
 import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.model.BlockLocation;
 import com.hcs.minions.model.Minion;
+import com.hcs.minions.model.MinionStatus;
 import com.hcs.minions.service.hook.SkyblockHook;
 import com.hcs.minions.upgrade.UpgradeService;
 import com.hcs.minions.util.Bars;
@@ -85,7 +86,13 @@ public final class MinionDiagnostics {
     }
 
     /** 单个仆从的诊断结果（结论 + 逐项事实）。 */
-    public record Report(Minion minion, Verdict verdict, List<Component> facts) {
+    public record Report(Minion minion, Verdict verdict, MinionStatus status, List<Component> facts) {
+
+        /** 与 GUI 信息卡 / 头顶名牌同一口径的中文状态标签。 */
+        public Component statusLine() {
+            return Messages.diagLine("当前状态：" + status.label()
+                    + (status.isProducing() ? " <gray>（正常产出）</gray>" : " <red>（未在产出）</red>"));
+        }
     }
 
     /** 诊断单个仆从（只读）。 */
@@ -94,21 +101,21 @@ public final class MinionDiagnostics {
         MinionTypeConfig cfg = config.get().type(minion.type());
         if (cfg == null) {
             facts.add(Messages.diagLine("类型 " + minion.type().key() + " 未注册（config.yml types 段已删除？）"));
-            return new Report(minion, Verdict.CONFIG_MISSING, facts);
+            return new Report(minion, Verdict.CONFIG_MISSING, statusOf(minion, Verdict.CONFIG_MISSING), facts);
         }
 
         World world = minion.location().bukkitWorld();
         Location center = minion.location().toLocation();
         if (world == null || center == null) {
             facts.add(Messages.diagLine("所在世界不存在或坐标无效"));
-            return new Report(minion, Verdict.CHUNK_UNLOADED, facts);
+            return new Report(minion, Verdict.CHUNK_UNLOADED, statusOf(minion, Verdict.CHUNK_UNLOADED), facts);
         }
         int cx = minion.location().x() >> 4;
         int cz = minion.location().z() >> 4;
         boolean chunkLoaded = world.isChunkLoaded(cx, cz);
         facts.add(Messages.diagLine(chunkLoaded ? "区块已加载" : "区块未加载（附近无玩家活动）"));
         if (!chunkLoaded) {
-            return new Report(minion, Verdict.CHUNK_UNLOADED, facts);
+            return new Report(minion, Verdict.CHUNK_UNLOADED, statusOf(minion, Verdict.CHUNK_UNLOADED), facts);
         }
 
         // 休眠：扫描半径内是否有玩家
@@ -119,7 +126,7 @@ public final class MinionDiagnostics {
                 facts.add(Messages.diagLine("扫描半径 " + (int) scanRadius + " 格内无玩家 → 休眠"
                         + "（产出在主人上线/返回时一次性结算）"));
                 facts.add(storageFact(minion, cfg));
-                return new Report(minion, Verdict.DORMANT, facts);
+                return new Report(minion, Verdict.DORMANT, statusOf(minion, Verdict.DORMANT), facts);
             }
             facts.add(Messages.diagLine("最近玩家 " + nearest.getName() + "（"
                     + (int) nearest.getLocation().distance(center) + " 格）"));
@@ -139,7 +146,7 @@ public final class MinionDiagnostics {
             facts.add(Messages.diagLine("<red>无售卖出口</red>：自动售卖未开启，也未装漏斗模块"
                     + "（取货 / 开自动售卖 / 装漏斗均可恢复）"));
             facts.add(fuelFact(minion));
-            return new Report(minion, Verdict.HALTED_FULL, facts);
+            return new Report(minion, Verdict.HALTED_FULL, statusOf(minion, Verdict.HALTED_FULL), facts);
         }
         if (autoSell) {
             facts.add(Messages.diagLine("售卖出口：自动售卖（满仓全价）"));
@@ -152,7 +159,7 @@ public final class MinionDiagnostics {
         // 空岛/世界校验
         if (!skyblock.canWorkAt(minion)) {
             facts.add(Messages.diagLine("<red>空岛校验不通过</red>（仆从不在可用岛屿范围内，或 SuperiorSkyblock2 未就绪）"));
-            return new Report(minion, Verdict.BLOCKED_BY_ISLAND, facts);
+            return new Report(minion, Verdict.BLOCKED_BY_ISLAND, statusOf(minion, Verdict.BLOCKED_BY_ISLAND), facts);
         }
 
         // 范围内目标（布局问题）——与 performWork 同口径构造上下文
@@ -170,17 +177,30 @@ public final class MinionDiagnostics {
                     + "且达到当前 Tier 的解锁目标）"));
             facts.add(targetHint(minion, cfg));
             facts.add(fuelFact(minion));
-            return new Report(minion, Verdict.NO_TARGET, facts);
+            return new Report(minion, Verdict.NO_TARGET, statusOf(minion, Verdict.NO_TARGET), facts);
         }
 
         facts.add(fuelFact(minion));
         // 冷却 vs 工作中
         if (!minion.canWorkNow(Bukkit.getCurrentTick())) {
             facts.add(Messages.diagLine("下次工作 " + minion.nextWorkSeconds() + " 秒后（冷却中，属正常）"));
-            return new Report(minion, Verdict.COOLDOWN, facts);
+            return new Report(minion, Verdict.COOLDOWN, statusOf(minion, Verdict.COOLDOWN), facts);
         }
         facts.add(Messages.diagLine("下次工作：本周期"));
-        return new Report(minion, Verdict.WORKING, facts);
+        return new Report(minion, Verdict.WORKING, statusOf(minion, Verdict.WORKING), facts);
+    }
+
+    /** Verdict -> MinionStatus 映射（诊断结论与运行时状态卡共用同一口径）。 */
+    private static MinionStatus statusOf(Minion minion, Verdict v) {
+        return switch (v) {
+            case WORKING, COOLDOWN -> MinionStatus.WORKING;
+            case DORMANT -> MinionStatus.DORMANT;
+            case HALTED_FULL -> MinionStatus.HALTED_FULL;
+            case NO_TARGET -> MinionStatus.NO_TARGET;
+            case BLOCKED_BY_ISLAND -> MinionStatus.BLOCKED_BY_ISLAND;
+            case CONFIG_MISSING -> MinionStatus.CONFIG_MISSING;
+            case CHUNK_UNLOADED -> MinionStatus.CHUNK_UNLOADED;
+        };
     }
 
     /** 一次诊断多只仆从（按结论排序：异常的排前面）。 */

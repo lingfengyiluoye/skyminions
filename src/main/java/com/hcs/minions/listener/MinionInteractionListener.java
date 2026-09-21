@@ -104,7 +104,9 @@ public final class MinionInteractionListener implements Listener {
         if (cfg != null && cfg.hasUnlockCost() && !permissions.isAdmin(player)
                 && !collection.hasPaidUnlock(player.getUniqueId(), type.get().key())) {
             long cost = cfg.unlockCost();
-            if (!economy.has(player, cost) || !economy.withdraw(player, cost)) {
+            // 原子扣款：单次 withdraw 判定，不做 has+withdraw 两次探测——
+            // 两次调用之间存在窗口，余额可能被并发操作改变，导致扣款结果与判定不一致
+            if (!economy.withdraw(player, cost)) {
                 player.sendMessage(Messages.unlockCostRequired(
                         String.valueOf(cost),
                         MaterialNames.of(cfg.product()),

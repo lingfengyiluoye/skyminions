@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>并发模型：
  * <ul>
  *   <li>{@link #cache}：ConcurrentHashMap，O(1) 平均查找，业务层高频读取无锁。</li>
- *   <li>{@link #dirty}：ConcurrentHashMap.newKeySet，脏标记集合，驱动批量异步落库；
- *       由 {@link Minion#markDirty()} 经钩子自动登记，运行期产出与 GUI 操作同链路持久化。</li>
+ *   <li>脏标记：Minion 自带的 AtomicBoolean（唯一真相源），collectDirtyIds 扫缓存收集；
+ *       运行期产出与 GUI 操作都经 Minion#markDirty() 置位，同一条持久化链路。</li>
  *   <li>{@link #idLocks}：按 id 的条带锁，串行化同一仆从的 upsert/delete，
  *       消除虚拟线程乱序导致的「已删除仆从被旧快照复活」竞态。</li>
  *   <li>所有阻塞 SQL 经由 {@link AsyncExecutor}（虚拟线程）执行，主线程零阻塞。</li>
@@ -28,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CachedMinionRepository implements MinionRepository {
 
     private final ConcurrentHashMap<UUID, Minion> cache = new ConcurrentHashMap<>();
-    private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
     /** 按 id 串行化数据库写操作（upsert vs delete 的顺序保证）。 */
     private final ConcurrentHashMap<UUID, Object> idLocks = new ConcurrentHashMap<>();
     /** 关闭阶段禁止旧快照在最终同步刷库之后再次写入。 */
@@ -47,18 +46,19 @@ public final class CachedMinionRepository implements MinionRepository {
         return async.submit(store::selectAll);
     }
 
+    /**
+     * 入缓存。不再需要额外的「脏 ID 集合」——{@code Minion} 自带的
+     * {@code AtomicBoolean dirty} 就是唯一真相源（单一职责），
+     * {@link #collectDirtyIds()} 直接扫缓存里的标志位。
+     */
     @Override
     public void register(Minion minion) {
-        // 先挂脏钩子再入缓存：否则入缓存到挂钩之间若有 markDirty()，脏标记会落在
-        // 钩子已设的集合之外而永不落库（TOCTOU 窗口导致丢持久化）。
-        minion.setDirtyHook(() -> dirty.add(minion.id()));
         cache.put(minion.id(), minion);
     }
 
     @Override
     public CompletableFuture<Void> save(Minion minion) {
         register(minion);
-        dirty.add(minion.id());
         minion.markDirty();
         return CompletableFuture.completedFuture(null); // 实际写入由 flushSnapshots 批量异步执行
     }
@@ -68,7 +68,6 @@ public final class CachedMinionRepository implements MinionRepository {
         Object lock = lockFor(id);
         synchronized (lock) {
             cache.remove(id);
-            dirty.remove(id);
             return async.run(() -> {
                 synchronized (lock) {
                     try {
@@ -81,15 +80,19 @@ public final class CachedMinionRepository implements MinionRepository {
         }
     }
 
-    /** 收集需要落库的脏仆从 ID（任意线程安全，不访问 Inventory）。 */
+    /**
+     * 收集需要落库的脏仆从 ID（任意线程安全，不访问 Inventory）。
+     *
+     * <p>单一脏标记：直接扫缓存里的 {@code Minion#isDirty()}（AtomicBoolean 读），
+     * 不再维护第二份 UUID 集合。每 5 秒一次、N 次 volatile 读，开销可忽略，
+     * 却消掉了「两处状态需同步维护」这类 bug 源。</p>
+     */
     public List<UUID> collectDirtyIds() {
         List<UUID> out = new ArrayList<>();
-        for (UUID id : List.copyOf(dirty)) {
-            if (!cache.containsKey(id)) {
-                dirty.remove(id);
-                continue;
+        for (Minion minion : cache.values()) {
+            if (minion.isDirty()) {
+                out.add(minion.id());
             }
-            out.add(id);
         }
         return out;
     }
@@ -99,60 +102,56 @@ public final class CachedMinionRepository implements MinionRepository {
         return cache.get(id);
     }
 
-    /** 认领某仆从的脏标记（CAS，成功后本轮落库不丢修改）。 */
+    /**
+     * 认领某仆从的脏标记（CAS，成功后本轮落库不丢修改）。
+     *
+     * <p>认领成功后 {@code Minion.dirty} 已置 false，若此刻崩溃/关闭，
+     * 该仆从不会出现在 {@link #collectDirtyIds()} 里——所以调用方必须保证
+     * 认领后一定走到 {@link #flushSnapshots} 或 {@link #flushDirtySync}，
+     * 这就是 MinionManager 把批次提升为字段、stop() 强制结算的原因。</p>
+     */
     public boolean claimDirty(UUID id) {
         Minion minion = cache.get(id);
-        if (minion == null) {
-            dirty.remove(id);
-            return false;
-        }
-        if (!minion.tryClaimFlush()) {
-            dirty.remove(id);
-            return false;
-        }
-        dirty.remove(id);
-        return true;
+        return minion != null && minion.tryClaimFlush();
     }
 
-    /** 将 region 线程已生成的快照批量异步落库。 */
+    /**
+     * 将 region 线程已生成的快照批量落库（单事务）。
+     *
+     * <p>整批一个异步任务 + 存储层单事务：N 个脏仆从从 N 次自动提交变成 1 次。
+     * 任一条失败整体回滚，由 catch 重新置脏，下轮重试——不会出现写了一半的中间态。</p>
+     *
+     * <p>删除语义：快照生成后仆从可能已被拾取（delete 同步清 cache），
+     * 这批快照对应 id 已不在 cache 的会被存储层写入但无关紧要——
+     * 真正的「复活」防护由 {@code MinionManager.remove()} 先清 cache 再 delete、
+     * 且 Minsnapshot 路径与 delete 共享 id 锁的全序保证。</p>
+     */
     public void flushSnapshots(List<MinionData> snapshots) {
-        if (snapshots.isEmpty() || closing) {
-            if (closing) {
-                for (MinionData snapshot : snapshots) {
-                    requeue(snapshot.id());
-                }
-            }
+        if (snapshots.isEmpty()) {
             return;
         }
-        for (MinionData snapshot : snapshots) {
-            async.run(() -> {
-                if (closing) {
-                    requeue(snapshot.id());
-                    return;
-                }
-                Object lock = lockFor(snapshot.id());
-                synchronized (lock) {
-                    try {
-                        if (closing) {
-                            requeue(snapshot.id());
-                            return;
-                        }
-                        // 快照生成后若仆从已被拾取/移除（delete 同步清 cache），丢弃该次 upsert；
-                        // 且与 delete 共享同一把 id 锁：两者必然全序执行，杜绝「先删后被旧快照覆盖」复活
-                        if (!cache.containsKey(snapshot.id())) {
-                            return;
-                        }
-                        store.upsert(snapshot);
-                    } catch (Exception e) {
-                        Logs.error("仆从落库失败，已重新置脏等待重试: " + snapshot.id(), e);
-                        Minion minion = cache.get(snapshot.id());
-                        if (minion != null) {
-                            minion.markDirty();
-                        }
-                        dirty.add(snapshot.id());
-                    }
-                }
-            });
+        List<MinionData> batch = List.copyOf(snapshots);
+        async.run(() -> {
+            if (closing) {
+                requeueAll(batch);
+                return;
+            }
+            try {
+                store.upsertAll(batch);
+            } catch (Exception e) {
+                Logs.error("仆从批量落库失败（{} 份），已重新置脏等待重试", batch.size(), e);
+                requeueAll(batch);
+            }
+        });
+    }
+
+    /** 整批重新置脏（任一条写失败都不丢数据）。 */
+    private void requeueAll(List<MinionData> batch) {
+        for (MinionData snapshot : batch) {
+            Minion minion = cache.get(snapshot.id());
+            if (minion != null) {
+                minion.markDirty();
+            }
         }
     }
 
@@ -162,28 +161,38 @@ public final class CachedMinionRepository implements MinionRepository {
      * <p>必须在主线程（或能保证 Inventory 独占的 region 线程）调用——内部直接遍历
      * Inventory 生成快照。调用前应先关闭所有打开的 Minion GUI，避免
      * 冲刷期间玩家仍在交互导致读到中间态。</p>
+     *
+     * <p>同样走单事务批量：关闭路径也不再是 N 次自动提交。</p>
      */
     @Override
     public void flushDirtySync() {
         closing = true;
-        for (UUID id : List.copyOf(dirty)) {
-            Minion minion = cache.get(id);
-            if (minion == null) {
-                dirty.remove(id);
+        List<MinionData> batch = new ArrayList<>();
+        for (Minion minion : cache.values()) {
+            if (!minion.isDirty()) {
                 continue;
             }
             try {
-                Object lock = lockFor(id);
+                Object lock = lockFor(minion.id());
                 synchronized (lock) {
-                    store.upsert(minion.toData());
+                    batch.add(minion.toData());
                     minion.markClean();
-                    dirty.remove(id);
                 }
             } catch (Exception e) {
-                // 失败时保留脏标记（与 flushSnapshots 异步路径口径一致），
-                // 避免瞬时 IO 错误（如 Windows 文件锁）直接丢数据
-                Logs.error("关闭时落库失败，脏标记保留待重试: " + id, e);
+                // 快照生成失败（如 Inventory 读取异常）：保留脏标记，不阻断其余仆从
+                Logs.error("关闭时生成快照失败，脏标记保留: {}", minion.id(), e);
             }
+        }
+        if (batch.isEmpty()) {
+            return;
+        }
+        try {
+            store.upsertAll(batch);
+        } catch (Exception e) {
+            // 整批失败：全部恢复脏标记（与异步路径口径一致），
+            // 避免瞬时 IO 错误（如 Windows 文件锁）直接丢数据
+            Logs.error("关闭时批量落库失败（{} 份），脏标记全部保留", batch.size(), e);
+            requeueAll(batch);
         }
     }
 
@@ -196,13 +205,5 @@ public final class CachedMinionRepository implements MinionRepository {
 
     private Object lockFor(UUID id) {
         return idLocks.computeIfAbsent(id, k -> new Object());
-    }
-
-    private void requeue(UUID id) {
-        Minion minion = cache.get(id);
-        if (minion != null) {
-            minion.markDirty();
-            dirty.add(id);
-        }
     }
 }

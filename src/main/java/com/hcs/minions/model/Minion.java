@@ -137,28 +137,20 @@ public final class Minion {
     private volatile int scanCursor;
     private volatile ArmorStand stand;
     private final AtomicBoolean dirty = new AtomicBoolean(false);
-    /**
-     * 落库通知钩子：markDirty() 时同步把本仆从 id 登记进仓库脏集合，
-     * 保证「运行期产出/燃料衰减」与「GUI 操作」走同一条持久化链路。
-     * 由 {@code CachedMinionRepository#register} 注入；未注册时仅置内存标记（如单测）。
-     */
-    private volatile Runnable dirtyHook;
     /** 上次为观看中的 GUI 刷新状态卡的时间（每秒一次，节流用）。 */
     private volatile long lastGuiRefreshTick;
     /** 主人显示名缓存（GUI 渲染每帧都会读，避免重复 getOfflinePlayer 查询）。 */
     private volatile String ownerNameCache;
+    /** 运行时状态（信息卡/名牌/诊断共用；由 MinionManager 每周期写入）。 */
+    private volatile MinionStatus status = MinionStatus.WORKING;
 
-    /** 注册落库钩子（仓库缓存层在仆从入缓存时调用）。 */
-    public void setDirtyHook(Runnable hook) {
-        this.dirtyHook = hook;
-    }
-
+    /**
+     * 标记脏。{@code dirty} 是**唯一**的持久化真相源——仓库层直接扫它收集
+     * 待落库名单（{@code CachedMinionRepository#collectDirtyIds}），
+     * 不再需要额外的「脏 ID 集合」或通知钩子。
+     */
     public void markDirty() {
         dirty.set(true);
-        Runnable hook = dirtyHook;
-        if (hook != null) {
-            hook.run();
-        }
     }
 
     public Minion(UUID id, UUID owner, MinionType type, int level,
@@ -480,14 +472,16 @@ public final class Minion {
         v.put("storage", Bars.fraction(stored, capacity, "件"));
         v.put("storage_bar", Bars.colored(stored, capacity));
         v.put("total", String.valueOf(totalProduced));
+        // 状态行口径唯一：直接读运行时状态（processMinion 每周期写入），
+        // 满仓优先级最高——它是最常见也最需要玩家立刻行动的异常
+        MinionStatus st = full ? MinionStatus.HALTED_FULL : status();
+        v.put("status", "<" + (st.isProducing() ? "green" : "red") + ">" + st.label() + "</" + (st.isProducing() ? "green" : "red") + ">");
         if (full) {
-            v.put("status", GuiText.raw("info.status-halted", Map.of()));
             v.put("halted_tip", GuiText.raw("info.halted-tip", Map.of()));
             // 停机时不显示「下次工作」倒计时（scheduleNext 不推进，显示了反而误导），
             // 但必须注入空串而非省略：省略会让「累计」行被可选行机制一起隐藏
             v.put("next_pair", "");
         } else {
-            v.put("status", GuiText.raw("info.status-working", Map.of()));
             // 运行中才显示下次工作倒计时
             v.put("next_pair", GuiText.raw("info.next-pair", Map.of("next", String.valueOf(nextWorkSeconds()))));
         }
@@ -893,6 +887,15 @@ public final class Minion {
         markDirty();
     }
 
+    /** 运行时状态（信息卡状态行/名牌/诊断结论共用）。 */
+    public MinionStatus status() {
+        return status;
+    }
+
+    public void setStatus(MinionStatus status) {
+        this.status = status == null ? MinionStatus.WORKING : status;
+    }
+
     public long lastActiveEpochMs() {
         return lastActiveEpochMs;
     }
@@ -1062,6 +1065,10 @@ public final class Minion {
 
     public void setStand(ArmorStand stand) {
         this.stand = stand;
+    }
+    /** 当前是否脏（唯一真相源：仓库靠它收集待落库名单，不再维护第二份集合）。 */
+    public boolean isDirty() {
+        return dirty.get();
     }
 
     public void markClean() {

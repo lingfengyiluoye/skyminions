@@ -33,14 +33,20 @@ com.hcs.minions
 │   └── MinionBehavior         ← 行为枚举（7 种策略原型）
 ├── repository/                ← 数据访问层
 │   ├── MinionRepository       ← 接口（CompletableFuture 异步契约）
-│   └── CachedMinionRepository ← 内存缓存 + CAS 脏标记 + 按 id 条带锁
+│   ├── MinionStore            ← 存储接口（upsertAll 单事务批量写）
+│   ├── CachedMinionRepository ← 内存缓存 + 单一脏标志（AtomicBoolean）+ 按 id 条带锁
+│   └── sqlite/ mysql/         ← 双存储实现（DDL 幂等迁移 + 抖动重试）
 ├── service/                   ← 业务服务
-│   ├── MinionManager          ← 全局调度器（O(n)+O(1) 短路）
+│   ├── MinionManager          ← 全局调度器（tick 按 region 合批 + 放置空间索引）
 │   ├── BlockSearcher          ← 限流方块搜索（两阶段螺旋，硬上限 <50）
 │   ├── SellService            ← 自动售卖（先扣物后加款，防刷钱）
-│   ├── FuelService            ← 燃料定义（双轴制：速度 + 催化剂）
-│   ├── CollectionService      ← 里程碑系统（跨阈值发金币+槽位加成）
+│   ├── FuelService            ← 燃料定义（双轴制：速度 + 催化剂，配置驱动）
+│   ├── CollectionService      ← 里程碑系统（跨阈值发金币+槽位加成，按玩家分片落盘）
 │   ├── OfflineSettlement      ← 离线收益结算（三道平衡锁）
+│   ├── MinionDiagnostics      ← 仆从诊断（只读，8 类结论，/minion diagnose）
+│   ├── SnapshotBatcher        ← 快照批次收集器（迟到快照单独补刷）
+│   ├── OfflineWindow          ← 离线结算窗口纯函数（幂等指针）
+│   ├── PlacementGuard         ← 放置守卫（数量/同格/间距原子占位）
 │   └── hook/SkyblockHook      ← SuperiorSkyblock2 反射接入
 ├── upgrade/                   ← 模块系统
 │   ├── UpgradeService         ← 模块效果结算（掉落处理+仓储压缩）
@@ -59,7 +65,9 @@ com.hcs.minions
 ├── event/                     ← 自定义 Bukkit Event
 └── util/                      ← 工具类
     ├── AsyncExecutor          ← 虚拟线程执行器（Java 21）
-    ├── EnchantedResource      ← 附魔资源（50+ 种，160:1 压缩）
+    ├── EnchantedResource      ← 附魔资源（50+ 种，160:1 压缩，配置驱动）
+    ├── Sounds                 ← 事件音效表（9 类事件，sounds: 段配置）
+    ├── Bars                   ← 字符画进度条（同维度分数 + 语义色）
     ├── ItemRef                ← 材料抽象（原版 Material / CraftEngine / 附魔资源）
     ├── GuiLayout              ← GUI 布局配置（槽位区间语法）
     ├── GuiText                ← GUI 文案模板（MiniMessage + 占位符）

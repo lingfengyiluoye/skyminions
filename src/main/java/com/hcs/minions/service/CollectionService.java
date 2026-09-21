@@ -81,7 +81,7 @@ public final class CollectionService {
             imported = importLegacy();
         }
         int shards = 0;
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".yml"));
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".yml") && !"archive".equals(d.getName()));
         if (files != null) {
             for (File f : files) {
                 UUID id = parseUuid(f.getName().substring(0, f.getName().length() - 4));
@@ -93,6 +93,12 @@ public final class CollectionService {
                 }
             }
         }
+        // 崩溃残局清理：writeShard 先写 .tmp 再原子 rename，JVM 在两步之间崩溃会留下
+        // 孤儿 .tmp。正式文件保留的是上一份内容（不丢数据），但垃圾会无限累积——
+        // 这里按「正式文件已存在则删 .tmp、否则把 .tmp 扶正」处理
+        recoverOrphanTmp();
+        // 长期不活跃玩家的分片移到 archive/，按需扶回（防止分片数无限增长拖慢启动）
+        archiveStaleShards(60);
         if (imported) {
             // 旧数据已在内存中：全部标记脏，下一次 save 会写成分片
             dirty.addAll(collections.keySet());
@@ -101,6 +107,42 @@ public final class CollectionService {
         }
         Logs.info("Collection 已加载 {} 个玩家记录（分片目录 {}）", shards > 0 ? shards : collections.size(),
                 dir.getName());
+    }
+
+    /**
+     * 清理 .tmp 残局（启动时一次）。
+     *
+     * <p>两种残留：① 正式文件已存在（上次已成功 rename，.tmp 是更早一次的遗留）→ 直接删；
+     * ② 只有 .tmp 没有正式文件（rename 前崩溃）→ 扶正为正式文件，避免这份数据被静默丢弃。</p>
+     */
+    private void recoverOrphanTmp() {
+        File[] tmps = dir.listFiles((d, name) -> name.endsWith(".yml.tmp"));
+        if (tmps == null || tmps.length == 0) {
+            return;
+        }
+        int promoted = 0;
+        int discarded = 0;
+        for (File tmp : tmps) {
+            File target = new File(dir, tmp.getName().substring(0, tmp.getName().length() - 4));
+            try {
+                if (target.exists()) {
+                    if (tmp.delete()) {
+                        discarded++;
+                    }
+                } else if (tmp.renameTo(target)) {
+                    promoted++;
+                    UUID id = parseUuid(target.getName().substring(0, target.getName().length() - 4));
+                    if (id != null && loadShard(id, target)) {
+                        Logs.info("已从崩溃残留恢复 collection 分片: {}", target.getName());
+                    }
+                }
+            } catch (Exception e) {
+                Logs.warn("清理 collection 残留 .tmp 失败: {}", tmp.getName(), e);
+            }
+        }
+        if (promoted > 0 || discarded > 0) {
+            Logs.info("collection 残局清理完成：扶正 {} 份，丢弃 {} 份过期临时文件", promoted, discarded);
+        }
     }
 
     /** 导入旧版单文件（新旧两种格式都兼容）。 */
@@ -259,6 +301,8 @@ public final class CollectionService {
         if (owner == null || material == null || amount <= 0) {
             return;
         }
+        // 分片可能已被归档：先按需扶回，否则会把归档玩家的历史累计清零重算
+        ensureLoaded(owner);
         ConcurrentHashMap<String, Long> map = collections.computeIfAbsent(owner, k -> new ConcurrentHashMap<>());
         long total = map.merge(material.name(), amount, Long::sum);
         dirty.add(owner);
@@ -389,6 +433,77 @@ public final class CollectionService {
      * <p>旧实现每分钟重写整个 collection.yml；现在写入量正比于「本分钟有多少玩家
      * 有产出」，与总玩家数解耦。分片写失败时保留脏标记，下一轮重试，不丢数据。</p>
      */
+    /**
+     * 归档长期不活跃玩家的分片（启动时一次 + 可由命令触发）。
+     *
+     * <p>分片文件按玩家数线性增长，而绝大多数玩家上线几次就不再回来——
+     * 每 60 秒的脏扫描本身不受影响（只碰脏集），但目录里几万个文件会让
+     * 启动时的 listFiles 和备份变慢。这里把「超过 N 天未写入」的分片移到
+     * {@code archive/} 子目录，玩家下次上线时由 {@link #loadShardOnDemand} 自动扶回。</p>
+     *
+     * @param maxIdleDays 闲置多少天以上才归档
+     * @return 归档的分片数
+     */
+    public int archiveStaleShards(int maxIdleDays) {
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".yml"));
+        if (files == null) {
+            return 0;
+        }
+        long cutoff = System.currentTimeMillis() - maxIdleDays * 86_400_000L;
+        File archiveDir = new File(dir, "archive");
+        int moved = 0;
+        for (File f : files) {
+            if (f.lastModified() >= cutoff) {
+                continue;
+            }
+            // 内存里仍活跃的玩家不归档（刚结算过的）
+            UUID id = parseUuid(f.getName().substring(0, f.getName().length() - 4));
+            if (id != null && (collections.containsKey(id) || dirty.contains(id))) {
+                continue;
+            }
+            if (!archiveDir.exists() && !archiveDir.mkdirs()) {
+                Logs.warn("无法创建 collection 归档目录: {}", archiveDir.getAbsolutePath());
+                return moved;
+            }
+            File target = new File(archiveDir, f.getName());
+            if (f.renameTo(target)) {
+                moved++;
+                // 从内存卸载，下次上线按需加载
+                if (id != null) {
+                    collections.remove(id);
+                    claimed.remove(id);
+                    paidUnlocks.remove(id);
+                }
+            }
+        }
+        if (moved > 0) {
+            Logs.info("已归档 {} 个长期不活跃的 collection 分片（阈值 {} 天）", moved, maxIdleDays);
+        }
+        return moved;
+    }
+
+    /**
+     * 按需加载某玩家的分片（主分片目录 → 归档目录）。
+     * 玩家上线/产出时若内存中没有其数据，先从这里捞回，避免归档后数据「消失」。
+     */
+    public void ensureLoaded(UUID owner) {
+        if (collections.containsKey(owner) || claimed.containsKey(owner)) {
+            return;
+        }
+        File shard = new File(dir, owner + ".yml");
+        if (shard.isFile()) {
+            loadShard(owner, shard);
+            return;
+        }
+        File archived = new File(new File(dir, "archive"), owner + ".yml");
+        if (archived.isFile()) {
+            if (loadShard(owner, archived)) {
+                Logs.info("已从归档扶回 collection 分片: {}", owner);
+                dirty.add(owner); // 下次保存写回主目录
+            }
+        }
+    }
+
     public void save() {
         List<UUID> pending = new ArrayList<>(dirty);
         if (pending.isEmpty()) {

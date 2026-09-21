@@ -12,6 +12,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -185,7 +186,50 @@ public final class SqliteMinionStore implements MinionStore {
         });
     }
 
-    /** 写操作带指数退避重试：重试耗尽后抛出（上层 CachedMinionRepository 会保留脏标记下轮再试）。 */
+    /**
+     * 批量落库（单事务）：N 个快照一次提交，取代 N 次自动提交。
+     *
+     * <p>这是写入侧最实的一项优化——脏仆从多时，原来每快照一个异步任务 +
+     * 一次 fsync，现在整批一个事务。任一条失败整体回滚，由上层重新置脏，
+     * 不会出现「写了一半」的中间态。</p>
+     */
+    @Override
+    public void upsertAll(List<MinionData> batch) {
+        if (batch.isEmpty()) {
+            return;
+        }
+        writeWithRetry("upsertAll", () -> {
+            boolean autoCommit = connection.getAutoCommit();
+            try {
+                connection.setAutoCommit(false);
+                try (PreparedStatement ps = connection.prepareStatement(UPSERT)) {
+                    for (MinionData d : batch) {
+                        ps.clearParameters();
+                        bind(ps, d);
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+                connection.commit();
+            } catch (Exception e) {
+                try {
+                    connection.rollback();
+                } catch (Exception rollbackEx) {
+                    Logs.error("SQLite 批量落库回滚失败", rollbackEx);
+                }
+                throw e;
+            } finally {
+                try {
+                    connection.setAutoCommit(autoCommit);
+                } catch (Exception restoreEx) {
+                    Logs.error("SQLite 恢复 autoCommit 失败", restoreEx);
+                }
+            }
+        });
+    }
+
+    /** 写操作带指数退避重试：重试耗尽后抛出（上层 CachedMinionRepository 会保留脏标记下轮再试）。
+     *  延迟加抖动（base + random(0, base)）：大量仆从同时失败时避免重试共振。 */
     private void writeWithRetry(String op, SqlAction action) {
         synchronized (lock) {
             for (int attempt = 1; ; attempt++) {
@@ -196,9 +240,11 @@ public final class SqliteMinionStore implements MinionStore {
                     if (attempt >= MAX_ATTEMPTS) {
                         throw new RuntimeException("SQLite " + op + " 失败（已重试 " + MAX_ATTEMPTS + " 次）", e);
                     }
-                    Logs.warn("SQLite {} 第 {} 次失败，{}ms 后重试", op, attempt, RETRY_DELAY_MS[attempt - 1]);
+                    long base = RETRY_DELAY_MS[attempt - 1];
+                    long jittered = base + ThreadLocalRandom.current().nextLong(base + 1);
+                    Logs.warn("SQLite {} 第 {} 次失败，{}ms 后重试", op, attempt, jittered);
                     try {
-                        Thread.sleep(RETRY_DELAY_MS[attempt - 1]);
+                        Thread.sleep(jittered);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("SQLite " + op + " 重试被中断", ie);

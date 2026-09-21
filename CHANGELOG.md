@@ -2,6 +2,49 @@
 
 本文件记录 SkyMinions 的主要版本变更。
 
+## [未发布] - 2026-09-21
+
+### ✨ 新增
+- **仆从诊断命令** `/minion diagnose [玩家]`：只读诊断「仆从为何不产出」，
+  覆盖类型配置缺失 / 区块未加载 / 休眠 / 满仓停工 / 空岛校验 / 无可用目标 /
+  冷却 / 工作中 8 类结论，按严重度排序，异常排前面
+- **运行时状态统一口径** `MinionStatus`：信息卡状态行、头顶名牌徽标、
+  诊断结论三处共用同一份状态，玩家不打命令也能在 GUI 看到停机原因
+- **事件音效层** `Sounds`：9 类事件音效（放置/拾取/工作/里程碑/售卖/
+  GUI 点击/装模块/燃料耗尽/解锁），音量集中在 `sounds:` 段配置，
+  单项置 0 即关闭
+- **PlaceholderAPI 扩展**：`%skyminions_count%`、`%skyminions_limit%`、
+  `%skyminions_count_<类型>%`、`%skyminions_produced_<类型>%`、
+  `%skyminions_collection_<材质>%`、`%skyminions_progress%` 等占位符
+- **bStats 用量统计**：仆从数 / 类型数 / 存储后端三个聚合图表
+
+### ⚡ 性能
+- **tick() 按 region 合批**：同一 region 的仆从合并为一个 region 任务，
+  调度提交从 O(仆从数) 降到 O(region 数)，零额外延迟
+- **单事务批量落库**：N 个脏仆从从 N 次自动提交变成 1 次（SQLite/MySQL 双路径）
+- **放置间距空间索引**：按世界+区块分桶，只查候选点 3×3 邻域，
+  代价与仆从总数脱钩（原来是 O(全部仆从) 建表）
+- **purgeOrphans 按 region 合批移除**
+
+### 🐞 修复
+- **在途快照批次关闭时强制冲刷**：region 任务挂起导致批次永不结算时，
+  已认领脏标记的快照不再 stranded（此前会静默丢失）
+- **collection 分片崩溃残局清理**：启动时扫描 `.tmp`，正式文件缺失则扶正、
+  已存在则清理，防止 JVM 崩溃后垃圾无限累积
+- **解锁扣款原子化**：去掉 `has() + withdraw()` 两次探测的余额窗口，
+  改为单次 withdraw 判定
+- **MySQL/SQLite 重试加抖动**：`base + random(0, base)`，避免大量仆从
+  同时失败时重试共振
+
+### 🔧 重构
+- **单一脏标记**：删掉仓库层冗余的「脏 ID 集合」与 Minion 的通知钩子，
+  `Minion.dirty`（AtomicBoolean）成为唯一真相源，`collectDirtyIds` 扫缓存收集
+- **并发不变量抽取为纯单元**：`SnapshotBatcher` / `OfflineWindow` /
+  `PlacementGuard` 三个类承载最微妙的并发规则，均有回归测试
+- **删除 vestigial 的 placementLock**：place() 改走 PlacementGuard 后已无人使用
+- **collection 分片归档**：超过 60 天未活跃的分片移入 `archive/`，
+  玩家下次产出时按需扶回，防止分片数无限增长拖慢启动
+
 ## [1.0.0] - 2026-09-07
 
 ### ✨ 新增

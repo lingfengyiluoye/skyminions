@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * MySQL 实现，基于 HikariCP。
@@ -201,6 +202,47 @@ public final class MysqlMinionStore implements MinionStore {
         });
     }
 
+    /**
+     * 批量落库（单连接单事务）：N 个快照一次往返一次提交。
+     * 失败整体回滚，由上层重新置脏，不留下「写了一半」的中间态。
+     */
+    @Override
+    public void upsertAll(List<MinionData> batch) {
+        if (batch.isEmpty()) {
+            return;
+        }
+        writeWithRetry("upsertAll", () -> {
+            try (Connection c = dataSource.getConnection()) {
+                boolean autoCommit = c.getAutoCommit();
+                try {
+                    c.setAutoCommit(false);
+                    try (PreparedStatement ps = c.prepareStatement(UPSERT)) {
+                        for (MinionData d : batch) {
+                            ps.clearParameters();
+                            bind(ps, d);
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                    c.commit();
+                } catch (Exception e) {
+                    try {
+                        c.rollback();
+                    } catch (Exception rollbackEx) {
+                        Logs.error("MySQL 批量落库回滚失败", rollbackEx);
+                    }
+                    throw e;
+                } finally {
+                    try {
+                        c.setAutoCommit(autoCommit);
+                    } catch (Exception restoreEx) {
+                        Logs.error("MySQL 恢复 autoCommit 失败", restoreEx);
+                    }
+                }
+            }
+        });
+    }
+
     @Override
     public Optional<MinionData> select(UUID id) {
         try (Connection c = dataSource.getConnection();
@@ -250,9 +292,11 @@ public final class MysqlMinionStore implements MinionStore {
                 if (attempt >= MAX_ATTEMPTS) {
                     throw new RuntimeException("MySQL " + op + " 失败（已重试 " + MAX_ATTEMPTS + " 次）", e);
                 }
-                Logs.warn("MySQL {} 第 {} 次失败，{}ms 后重试", op, attempt, RETRY_DELAY_MS[attempt - 1]);
+                long base = RETRY_DELAY_MS[attempt - 1];
+                long jittered = base + ThreadLocalRandom.current().nextLong(base + 1);
+                Logs.warn("MySQL {} 第 {} 次失败，{}ms 后重试", op, attempt, jittered);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS[attempt - 1]);
+                    Thread.sleep(jittered);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("MySQL " + op + " 重试被中断", ie);

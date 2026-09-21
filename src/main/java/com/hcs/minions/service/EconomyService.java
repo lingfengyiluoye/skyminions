@@ -91,6 +91,9 @@ public final class EconomyService {
     /**
      * 玩家余额是否足够（分）。经济未启用时视为「不收费」——返回 true，
      * 让 unlock-cost 在经济缺失的服上不阻塞放置（与「无 Vault 也能玩」一致）。
+     *
+     * <p><b>仅用于查询展示</b>：不要写成 {@code has() && withdraw()} 的两次探测——
+     * 两次调用之间有窗口，余额可能被并发改变。扣款请直接用 {@link #withdraw}。</p>
      */
     public boolean has(Player player, long cents) {
         if (economy == null || cents <= 0) {

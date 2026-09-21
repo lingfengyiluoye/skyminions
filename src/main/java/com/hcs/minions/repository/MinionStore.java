@@ -16,6 +16,18 @@ public interface MinionStore extends AutoCloseable {
 
     void upsert(MinionData data);
 
+    /**
+     * 批量落库（单事务）。
+     *
+     * <p>默认实现逐条 {@link #upsert}（语义等价）；实现类应覆盖为真正的单事务——
+     * N 个脏仆从一次 flush 从 N 次自动提交变成 1 次，这是写入侧最实的一项提升。</p>
+     */
+    default void upsertAll(List<MinionData> batch) {
+        for (MinionData data : batch) {
+            upsert(data);
+        }
+    }
+
     Optional<MinionData> select(UUID id);
 
     List<MinionData> selectAll();

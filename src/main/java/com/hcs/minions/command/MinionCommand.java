@@ -244,6 +244,8 @@ public final class MinionCommand extends Command {
             // 结论着色：生产中=绿，异常=红（语义色纪律：红=异常、绿=正常）
             String color = r.verdict().isProducing() ? "green" : "red";
             sender.sendMessage(Messages.diagVerdict("<" + color + ">" + r.verdict().label() + "</" + color + ">"));
+            // 与 GUI 信息卡/头顶名牌同一口径的运行时状态（processMinion 每周期写入）
+            sender.sendMessage(r.statusLine());
             for (Component fact : r.facts()) {
                 sender.sendMessage(fact);
             }

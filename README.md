@@ -70,8 +70,11 @@
 - 模拟采集（只读方块，不破坏）
 - 虚拟线程 IO（Java 21）
 - Folia / RegionScheduler 兼容
-- DB 写操作指数退避重试
-- 脏标记不丢数据
+- **tick 按 region 合批**：调度提交 O(仆从数) → O(region 数)
+- **单事务批量落库**：N 个脏仆从 1 次提交
+- **放置间距空间索引**：O(全部仆从) → O(局部密度)
+- DB 写操作指数退避重试（带抖动）
+- 脏标记不丢数据（关闭时强制冲刷在途批次）
 
 </td>
 <td width="50%">
@@ -82,6 +85,8 @@
 - CraftEngine（自定义物品作升级材料）
 - LuckPerms（权限自动联动）
 - Collection 里程碑槽位加成
+- **PlaceholderAPI**：`%skyminions_count%` 等 8 个占位符（记分板/全息框）
+- **bStats**：匿名用量统计（可关闭）
 
 </td>
 </tr>
@@ -134,6 +139,7 @@ cp target/SkyMinions-1.0.0.jar /path/to/server/plugins/
 | `/minion upgrade <模块>` | 发放升级模块 | `hcs.minions.admin` |
 | `/minion collection` | 查看资源累计与里程碑进度 | `hcs.minions.use` |
 | `/minion stats` | 运行时统计（运行时长/已放置/总产出） | `hcs.minions.admin` |
+| `/minion diagnose [玩家]` | 诊断仆从为何不产出（只读） | `hcs.minions.admin` |
 | `/minion reload` | 热重载配置文件 | `hcs.minions.admin` |
 | `/minion purge-orphans` | 清理孤儿盔甲架实体 | `hcs.minions.admin` |
 

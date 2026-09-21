@@ -5,6 +5,7 @@ import com.hcs.minions.config.MinionTypeConfig;
 import com.hcs.minions.event.MinionPlacedEvent;
 import com.hcs.minions.event.MinionRemovedEvent;
 import com.hcs.minions.model.BlockLocation;
+import com.hcs.minions.model.MinionStatus;
 import com.hcs.minions.model.Minion;
 import com.hcs.minions.repository.MinionRepository;
 import com.hcs.minions.service.hook.SkyblockHook;
@@ -33,6 +34,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -69,10 +71,11 @@ public final class MinionManager {
      * 并发不变量见 PlacementGuardTest）。
      */
     private final PlacementGuard placement = new PlacementGuard();
+    /** 仆从坐标空间索引：世界+区块 -> 该桶内的坐标（放置间距检查用，O(局部密度) 而非 O(全部仆从)）。 */
+    private final ConcurrentHashMap<ChunkKey, List<BlockLocation>> locationIndex = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Long> lastDebugLog = new ConcurrentHashMap<>();
     /** 处于「休眠」（半径无人）状态的仆从 id：恢复运转时补发闲置窗产出。 */
     private final Set<UUID> dormantIds = ConcurrentHashMap.newKeySet();
-    private final Object placementLock = new Object();
     /**
      * 仆从从休眠恢复运转时的回调（离线结算入口，由组合根在装配期注入）。
      * 用 volatile 回调而非直接持有 OfflineSettlement：两者的构造有先后依赖。
@@ -80,6 +83,8 @@ public final class MinionManager {
     private volatile java.util.function.Consumer<Minion> onReactivate;
     /** 仆从诊断（只读）：由组合根在装配期注入（需要 strategies/skyblock/upgrades/searcher）。 */
     private MinionDiagnostics diagnostics;
+    /** 在途快照批次（提升为字段以便 stop() 强制结算；无批次时为 null）。 */
+    private volatile SnapshotBatcher inFlightBatch;
 
     private ScheduledTask tickTask;
     private ScheduledTask sellTask;
@@ -145,6 +150,7 @@ public final class MinionManager {
             minions.put(minion.id(), minion);
             // 装配期直接占位（不走 cap 检查：这些仆从是既有数据，不是新放置）
             placement.admit(minion.owner(), minion.id(), minion.location());
+            indexLocation(minion);
             repository.register(minion);
         }
         Logs.info("已加载 {} 个仆从", minions.size());
@@ -177,7 +183,10 @@ public final class MinionManager {
         }
         // 不同 region 线程可能并发完成；超时后迟到的快照必须单独补刷，不能写入已提交批次。
         // 这条「迟到快照归属」规则由 SnapshotBatcher 承载（并发不变量有回归测试）。
+        // 提升为字段：stop() 才能在 allOf 永不完成（region 任务挂起）时强制结算，
+        // 否则已认领脏标记的快照会 stranded 在批次里无人落库
         SnapshotBatcher batch = new SnapshotBatcher();
+        this.inFlightBatch = batch;
         List<CompletableFuture<Void>> tasks = new ArrayList<>();
         for (UUID id : dirtyIds) {
             Minion minion = repository.getCached(id);
@@ -240,9 +249,21 @@ public final class MinionManager {
                 player.closeInventory();
             }
         }
+        // 在途快照批次强制结算：若某个 region 任务挂起导致 allOf 永不完成，
+        // 已 claimDirty（脏标记已置 false）的快照会 stranded 在批次里，
+        // 而 flushDirtySync 只扫 dirty 集合捞不回来 —— 这里补上最后一道
+        if (inFlightBatch != null) {
+            List<com.hcs.minions.model.MinionData> stranded = inFlightBatch.settle();
+            if (!stranded.isEmpty()) {
+                Logs.warn("关闭时强制结算在途快照批次，补刷 {} 份", stranded.size());
+                repository.flushSnapshots(stranded);
+            }
+            inFlightBatch = null;
+        }
         repository.flushDirtySync();
         entities.despawnAll();
         minions.clear();
+        locationIndex.clear(); // 空间索引同步清空
         placement.clear();
     }
 
@@ -254,10 +275,17 @@ public final class MinionManager {
      * 全局遍历：只做「纯内存 + 线程安全的只读判断」（chunk 是否加载、坐标转换），
      * 真正触碰方块/实体/Inventory 的 region 绑定操作全部委派给 {@code RegionScheduler}。
      * 这是 Folia 兼容的关键分界线：GlobalRegionScheduler 内严禁访问 region 状态。
+     *
+     * <p><b>按 region 合批</b>：同一 region（世界 + 32×32 区块网格）的仆从合并为
+     * <b>一个</b> region 任务，任务数从 O(仆从数) 降到 O(region 数)。1000 个仆从挤在
+     * 几张图上时，调度提交从 1000 次降到十几次，且不引入任何额外延迟
+     * （对比「每 tick 只处理 50 个」的分片轮询——那会给末尾仆从增加 N/50 tick 延迟）。</p>
      */
     private void tick() {
         long nowTick = Bukkit.getCurrentTick();
         tickCycles.incrementAndGet();
+        // region key -> 该 region 本轮待处理的仆从
+        Map<RegionKey, List<Minion>> byRegion = new HashMap<>();
         for (Minion minion : minions.values()) {
             BlockLocation loc = minion.location();
             World world = loc.bukkitWorld();
@@ -275,9 +303,29 @@ public final class MinionManager {
             if (center == null) {
                 continue;
             }
-            // 委派到该仆从所在的 region 线程执行完整工作逻辑
-            Bukkit.getRegionScheduler().run(plugin, center, ignored -> processMinion(minion, nowTick));
+            byRegion.computeIfAbsent(new RegionKey(world, cx >> 5, cz >> 5), k -> new ArrayList<>())
+                    .add(minion);
         }
+        // 每个 region 一个任务：任务内在同一 region 线程串行处理该组仆从
+        for (Map.Entry<RegionKey, List<Minion>> e : byRegion.entrySet()) {
+            List<Minion> group = e.getValue();
+            if (group.isEmpty()) {
+                continue;
+            }
+            Location dispatchAt = group.get(0).location().toLocation();
+            if (dispatchAt == null) {
+                continue;
+            }
+            Bukkit.getRegionScheduler().run(plugin, dispatchAt, ignored -> {
+                for (Minion minion : group) {
+                    processMinion(minion, nowTick);
+                }
+            });
+        }
+    }
+
+    /** region 归属键：世界 + 32×32 区块网格坐标（Folia region 划分单位）。 */
+    private record RegionKey(World world, int rx, int rz) {
     }
 
     /** 在仆从所在 region 线程上执行的完整处理逻辑（Folia 安全）。 */
@@ -285,14 +333,17 @@ public final class MinionManager {
         BlockLocation loc = minion.location();
         World world = loc.bukkitWorld();
         if (world == null) {
+            minion.setStatus(MinionStatus.CHUNK_UNLOADED);
             return;
         }
         Location center = loc.toLocation();
         if (center == null) {
+            minion.setStatus(MinionStatus.CHUNK_UNLOADED);
             return;
         }
         MinionTypeConfig typeConfig = config.get().type(minion.type());
         if (typeConfig == null) {
+            minion.setStatus(MinionStatus.CONFIG_MISSING);
             entities.refreshStatus(minion, MinionEntityService.PlateStatus.HALTED);
             return;
         }
@@ -309,6 +360,7 @@ public final class MinionManager {
         if (!playersNearby) {
             // 闲置（统一离线语义）：不实时工作，产出由主人上线/恢复运转时一次性结算；
             // 名牌显示 ⏾ 闲置挂机中
+            minion.setStatus(MinionStatus.DORMANT);
             entities.refreshStatus(minion, MinionEntityService.PlateStatus.DORMANT);
             dormantIds.add(minion.id());
             return;
@@ -346,7 +398,11 @@ public final class MinionManager {
         entities.refreshStatus(minion, halted
                 ? MinionEntityService.PlateStatus.HALTED
                 : MinionEntityService.PlateStatus.WORKING);
+        if (!halted) {
+            minion.setStatus(MinionStatus.WORKING);
+        }
         if (halted) {
+            minion.setStatus(MinionStatus.HALTED_FULL);
             return;
         }
 
@@ -365,6 +421,7 @@ public final class MinionManager {
         }
 
         if (!minion.canWorkNow(nowTick) || !skyblock.canWorkAt(minion)) {
+            minion.setStatus(skyblock.canWorkAt(minion) ? MinionStatus.COOLDOWN : MinionStatus.BLOCKED_BY_ISLAND);
             return;
         }
         performWork(minion, world, loc);
@@ -534,11 +591,12 @@ public final class MinionManager {
                 minion.owner(), minion.id(), cap,
                 minion.location(), minDistance,
                 // 关闭间距限制时不构建坐标列表（放置是低频操作，O(n) 也可接受）
-                minDistance > 0 ? existingLocations() : List.of());
+                minDistance > 0 ? existingLocations(minion.location()) : List.of());
         if (!reserved) {
             return false;
         }
         minions.put(minion.id(), minion);
+        indexLocation(minion); // 空间索引登记（间距检查用）
         MinionTypeConfig cfg = config.get().type(minion.type());
         entities.spawn(minion);
         repository.save(minion);
@@ -554,13 +612,55 @@ public final class MinionManager {
         return true;
     }
 
-    /** 现有仆从坐标（间距检查用；仅在 PlacementGuard 持有锁时被调用）。 */
-    private Iterable<BlockLocation> existingLocations() {
-        List<BlockLocation> out = new ArrayList<>(minions.size());
-        for (Minion m : minions.values()) {
-            out.add(m.location());
+    /**
+     * 现有仆从坐标（间距检查用）。
+     *
+     * <p><b>空间索引</b>：按「世界 + 16×16 区块」分桶，只返回候选点所在桶及其
+     * 8 个邻居桶的仆从。原来是 O(全部仆从) 建表——500 个仆从后每次放置都扫 500 遍；
+     * 现在代价与仆从总数无关，只与局部密度相关。间距阈值通常很小（默认 1），
+     * 单桶足以覆盖，取 3×3 桶是为大间距值留余量。</p>
+     */
+    private Iterable<BlockLocation> existingLocations(BlockLocation around) {
+        List<BlockLocation> out = new ArrayList<>();
+        String world = around.world();
+        int bx = around.x() >> 4;
+        int bz = around.z() >> 4;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                List<BlockLocation> bucket = locationIndex.get(chunkKey(world, bx + dx, bz + dz));
+                if (bucket != null) {
+                    out.addAll(bucket);
+                }
+            }
         }
         return out;
+    }
+
+    /** 分桶键：世界 + 区块坐标（用 record 保证 equals/hashCode 正确）。 */
+    private record ChunkKey(String world, int cx, int cz) {
+    }
+
+    private static ChunkKey chunkKey(String world, int cx, int cz) {
+        return new ChunkKey(world, cx, cz);
+    }
+
+    /** 把仆从坐标登记进空间索引（admit/place 成功后调用）。 */
+    private void indexLocation(Minion minion) {
+        BlockLocation loc = minion.location();
+        locationIndex.computeIfAbsent(chunkKey(loc.world(), loc.x() >> 4, loc.z() >> 4),
+                k -> new ArrayList<>()).add(loc);
+    }
+
+    /** 从空间索引移除（remove 时调用；O(桶长) 而非 O(全部)。 */
+    private void unindexLocation(Minion minion) {
+        BlockLocation loc = minion.location();
+        List<BlockLocation> bucket = locationIndex.get(chunkKey(loc.world(), loc.x() >> 4, loc.z() >> 4));
+        if (bucket != null) {
+            bucket.remove(loc);
+            if (bucket.isEmpty()) {
+                locationIndex.remove(chunkKey(loc.world(), loc.x() >> 4, loc.z() >> 4), bucket);
+            }
+        }
     }
 
     /** 按坐标反查仆从（放置前占位校验用）。 */
@@ -592,19 +692,18 @@ public final class MinionManager {
     }
 
     public Minion remove(Minion minion, Player player) {
-        // 与 place() 共用 PlacementGuard：计数/坐标占位的释放必须原子，
-        // 避免并发放置/拾取时计数错位（半释放会慢慢吃掉玩家的仆从额度）
-        synchronized (placementLock) {
-            minions.remove(minion.id());
-            placement.release(minion.owner(), minion.location());
-            lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
-            dormantIds.remove(minion.id()); // 休眠集合同步清理，避免按 id 泄漏
-            sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
-            entities.despawn(minion);
-            repository.delete(minion.id());
-            Bukkit.getPluginManager().callEvent(new MinionRemovedEvent(minion, player));
-            return minion;
-        }
+        // 占位释放由 PlacementGuard 内部锁保证原子（place() 的占位也用同一把锁），
+        // 无需外层锁——早先的外层 placementLock 在 place() 改走 guard 后已无人使用
+        minions.remove(minion.id());
+        placement.release(minion.owner(), minion.location());
+        unindexLocation(minion); // 空间索引同步移除
+        lastDebugLog.remove(minion.id()); // 防止 debug 节流缓存随时间缓慢泄漏
+        dormantIds.remove(minion.id()); // 休眠集合同步清理，避免按 id 泄漏
+        sell.forget(minion.id()); // 清理售卖在途闸门，避免 inFlight 随仆从增删泄漏
+        entities.despawn(minion);
+        repository.delete(minion.id());
+        Bukkit.getPluginManager().callEvent(new MinionRemovedEvent(minion, player));
+        return minion;
     }
 
     /** 右键小人打开仆从 GUI（仓库内联 + 燃料/升级/收集/拾取）。 */
@@ -667,11 +766,29 @@ public final class MinionManager {
                 }
             }
         }
+        if (orphans.isEmpty()) {
+            return 0;
+        }
+        // 按 region 合批移除：与 tick() 同一思路——N 个孤儿从 N 个调度任务降到
+        // O(region 数) 个。移除仍在该 region 线程执行（Folia 实体线程约束）
+        Map<RegionKey, List<ArmorStand>> byRegion = new HashMap<>();
         for (ArmorStand stand : orphans) {
             Location at = stand.getLocation();
-            Bukkit.getRegionScheduler().run(plugin, at, task -> {
-                if (stand.isValid()) {
-                    stand.remove();
+            World world = at.getWorld();
+            if (world == null) {
+                continue;
+            }
+            byRegion.computeIfAbsent(new RegionKey(world, at.getBlockX() >> 9, at.getBlockZ() >> 9),
+                    k -> new ArrayList<>()).add(stand);
+        }
+        for (Map.Entry<RegionKey, List<ArmorStand>> e : byRegion.entrySet()) {
+            List<ArmorStand> group = e.getValue();
+            Location dispatchAt = group.get(0).getLocation();
+            Bukkit.getRegionScheduler().run(plugin, dispatchAt, task -> {
+                for (ArmorStand stand : group) {
+                    if (stand.isValid()) {
+                        stand.remove();
+                    }
                 }
             });
         }
